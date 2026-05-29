@@ -1,0 +1,19 @@
+{{ define "_boards.html" }}
+<section class="boards" id="boards">
+  <h2 class="boards-title">ボード</h2>
+  <ul class="boards-list">
+    {{ range .Boards }}
+    <li class="board-item">
+      <a
+        class="board-link"
+        href="/app/items?board={{ .ID }}"
+        hx-get="/app/items?board={{ .ID }}"
+        hx-target="#main-pane"
+        hx-push-url="true"
+      >{{ .Name }}</a>
+      {{ if .Description }}<p class="board-desc">{{ .Description }}</p>{{ end }}
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}

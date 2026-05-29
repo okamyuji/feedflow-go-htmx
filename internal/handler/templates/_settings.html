@@ -1,0 +1,59 @@
+{{ define "_settings.html" }}
+<section class="settings" id="settings">
+  <h2 class="settings-title">設定</h2>
+  {{ if .Flash }}<p class="settings-flash" role="status">{{ .Flash }}</p>{{ end }}
+  <form
+    class="settings-form"
+    hx-post="/app/settings"
+    hx-target="#main-pane"
+    hx-swap="innerHTML"
+  >
+    <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+    <label class="field">
+      <span class="field-label">ポーリング間隔</span>
+      <select class="field-input" name="poll_interval">
+        <option value="15m"{{ if eq (printf "%s" .Settings.PollInterval) "15m" }} selected{{ end }}>15分</option>
+        <option value="30m"{{ if eq (printf "%s" .Settings.PollInterval) "30m" }} selected{{ end }}>30分</option>
+        <option value="1h"{{ if eq (printf "%s" .Settings.PollInterval) "1h" }} selected{{ end }}>1時間</option>
+        <option value="6h"{{ if eq (printf "%s" .Settings.PollInterval) "6h" }} selected{{ end }}>6時間</option>
+        <option value="manual"{{ if eq (printf "%s" .Settings.PollInterval) "manual" }} selected{{ end }}>手動のみ</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">保持件数N</span>
+      <input class="field-input" type="number" name="max_items" min="1" value="{{ .Settings.MaxItems }}">
+    </label>
+    <label class="field">
+      <span class="field-label">既読の自動削除日数M</span>
+      <input class="field-input" type="number" name="read_retention_days" min="1" value="{{ .Settings.ReadRetentionDays }}">
+    </label>
+    <label class="field">
+      <span class="field-label">テーマ</span>
+      <select class="field-input" name="theme">
+        <option value="dark"{{ if eq (printf "%s" .Settings.Theme) "dark" }} selected{{ end }}>ダーク</option>
+        <option value="light"{{ if eq (printf "%s" .Settings.Theme) "light" }} selected{{ end }}>ライト</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">既定の表示形式</span>
+      <select class="field-input" name="default_view">
+        <option value="title"{{ if eq (printf "%s" .Settings.DefaultView) "title" }} selected{{ end }}>タイトルのみ</option>
+        <option value="card"{{ if eq (printf "%s" .Settings.DefaultView) "card" }} selected{{ end }}>カード</option>
+        <option value="magazine"{{ if eq (printf "%s" .Settings.DefaultView) "magazine" }} selected{{ end }}>マガジン</option>
+        <option value="article"{{ if eq (printf "%s" .Settings.DefaultView) "article" }} selected{{ end }}>記事ビュー</option>
+      </select>
+    </label>
+    <button class="btn-primary" type="submit">保存する</button>
+  </form>
+
+  <div class="opml-actions">
+    <h3 class="opml-title">OPML</h3>
+    <a class="btn-ghost" href="/app/opml/export">エクスポート</a>
+    <form method="post" action="/app/opml/import" enctype="multipart/form-data" class="opml-import">
+      <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+      <input class="field-input" type="file" name="opml" accept=".opml,.xml" required>
+      <button class="btn-ghost" type="submit">インポート</button>
+    </form>
+  </div>
+</section>
+{{ end }}

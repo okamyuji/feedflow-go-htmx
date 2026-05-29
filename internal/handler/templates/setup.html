@@ -1,0 +1,29 @@
+{{ define "setup.html" }}
+<!doctype html>
+<html lang="ja" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>初回セットアップ feedflow</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <h1 class="auth-title">初回セットアップ</h1>
+    <p class="auth-lead">所有者のユーザー名とパスワードを登録します。</p>
+    {{ if .Flash }}<p class="auth-error" role="alert">{{ .Flash }}</p>{{ end }}
+    <form method="post" action="/setup" class="auth-form">
+      <label class="field">
+        <span class="field-label">ユーザー名</span>
+        <input class="field-input" type="text" name="username" autocomplete="username" required>
+      </label>
+      <label class="field">
+        <span class="field-label">パスワード</span>
+        <input class="field-input" type="password" name="password" autocomplete="new-password" minlength="8" required>
+      </label>
+      <button class="btn-primary" type="submit">登録する</button>
+    </form>
+  </main>
+</body>
+</html>
+{{ end }}

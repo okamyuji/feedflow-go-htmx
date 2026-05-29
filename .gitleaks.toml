@@ -12,11 +12,14 @@ description = """\
 作業ツリーのno-git scanからは除外する。
 docs/superpowers配下の計画書はE2Eハードニング用のテスト鍵を例示として含むため
 ドキュメントとして除外する。これらは実値ではなくテスト専用の固定文字列である。
+scripts/verify-hardening.shはローカル検証専用でFEEDFLOW_SESSION_KEYに固定の
+テスト鍵を埋め込むため除外する。これは実値ではなく検証スクリプト用の固定文字列である。
 """
 paths = [
   '''\.env\.example''',
   '''^\.env$''',
   '''^docs/superpowers/''',
+  '''^scripts/verify-hardening\.sh$''',
 ]
 regexes = [
   '''\*\*\*MASKED\*\*\*''',

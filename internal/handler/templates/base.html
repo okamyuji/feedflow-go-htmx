@@ -1,0 +1,65 @@
+{{ define "base.html" }}
+<!doctype html>
+<html lang="ja" data-theme="{{ if isDark .Theme }}dark{{ else }}light{{ end }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <meta name="csrf-token" content="{{ .CSRFToken }}">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/alpine.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body
+  x-data="feedflow({{ if isDark .Theme }}'dark'{{ else }}'light'{{ end }})"
+  x-init="init()"
+  @keydown.window="onKey($event)"
+  hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
+>
+  <div class="app-shell">
+    <header class="app-bar">
+      <span class="app-brand">feedflow</span>
+      <div class="app-actions">
+        <button class="icon-btn" @click="toggleTheme()" aria-label="テーマ切替">
+          <span x-text="theme === 'dark' ? '昼' : '夜'"></span>
+        </button>
+        <a class="icon-btn" href="/app/settings" hx-get="/app/settings" hx-target="#main-pane" hx-push-url="true">設定</a>
+        <form method="post" action="/logout" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+          <button class="icon-btn" type="submit">ログアウト</button>
+        </form>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <aside class="tree-pane" id="tree-pane">
+        {{ template "_tree.html" . }}
+      </aside>
+
+      <main class="main-pane" id="main-pane">
+        {{ template "_item_list.html" . }}
+      </main>
+    </div>
+  </div>
+
+  <div
+    class="overlay-backdrop"
+    x-show="overlayOpen"
+    x-transition.opacity
+    @click="closeOverlay()"
+    style="display:none"
+  ></div>
+  <section
+    class="reading-overlay"
+    id="reading-overlay"
+    x-show="overlayOpen"
+    x-transition
+    @scroll.debounce.300ms="onOverlayScroll($event)"
+    style="display:none"
+  >
+    {{ if .ActiveItem }}{{ template "_item_overlay.html" .ActiveItem }}{{ end }}
+  </section>
+</body>
+</html>
+{{ end }}

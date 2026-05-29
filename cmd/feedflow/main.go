@@ -5,18 +5,22 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/okamyuji/feedflow-go-htmx/internal/handler"
 )
 
-// versionビルド時に-ldflagsで埋め込むバージョン文字列です。
+// version ビルド時に-ldflagsで埋め込むバージョン文字列です。
 var version = "dev"
 
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthz)
+	srvHandler, err := buildHandler()
+	if err != nil {
+		log.Fatalf("failed to build handler: %v", err)
+	}
 
 	srv := &http.Server{
 		Addr:              ":8080",
-		Handler:           mux,
+		Handler:           srvHandler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -29,8 +33,14 @@ func main() {
 	}
 }
 
-// healthz死活監視用のエンドポイントを返します。
-func healthz(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write([]byte("ok"))
+// buildHandler 依存を組み立ててルーティング済みハンドラを返します。
+// 各依存の具象生成はPhase2からPhase6で確定し、ここでDepsへ注入します。
+// 現時点では結線の骨組みとしてhandler.Newを呼び、Routesを返します。
+func buildHandler() (http.Handler, error) {
+	deps := handler.Deps{}
+	h, err := handler.New(deps)
+	if err != nil {
+		return nil, err
+	}
+	return h.Routes(), nil
 }

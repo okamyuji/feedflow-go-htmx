@@ -1,0 +1,32 @@
+{{ define "_tree.html" }}
+<nav class="tree" aria-label="購読ツリー">
+  <ul class="tree-list">
+    {{ range .Tree }}
+    <li class="tree-item tree-{{ .Kind }}{{ if .HasError }} tree-error{{ end }}">
+      <a
+        class="tree-link"
+        href="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else if eq .Kind "board" }}board={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
+        hx-get="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else if eq .Kind "board" }}board={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
+        hx-target="#main-pane"
+        hx-push-url="true"
+      >
+        <span class="tree-label">{{ .Label }}</span>
+        {{ if gt .UnreadCount 0 }}<span class="tree-badge">{{ .UnreadCount }}</span>{{ end }}
+        {{ if .HasError }}<span class="tree-error-mark" title="取得エラー">!</span>{{ end }}
+      </a>
+    </li>
+    {{ end }}
+  </ul>
+
+  <form
+    class="subscribe-form"
+    hx-post="/app/feeds"
+    hx-target="#tree-pane"
+    hx-swap="outerHTML"
+  >
+    <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+    <input class="field-input" type="url" name="url" placeholder="フィードURLまたはサイトURL" required>
+    <button class="btn-primary" type="submit">購読する</button>
+  </form>
+</nav>
+{{ end }}

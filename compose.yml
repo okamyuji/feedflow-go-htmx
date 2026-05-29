@@ -1,0 +1,50 @@
+# feedflowのデプロイ用composeです。nginx前段とアプリを同居させALBとNLBは使いません。
+# アプリは内部ネットワークのみに露出しホストへ出すのはnginxの80と443だけとします。
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${FEEDFLOW_VERSION:-dev}
+        TARGETARCH: arm64
+    image: feedflow:${FEEDFLOW_VERSION:-dev}
+    restart: unless-stopped
+    environment:
+      FEEDFLOW_ADDR: ":8080"
+      FEEDFLOW_DATA_DIR: "/data"
+      FEEDFLOW_BASE_URL: "${FEEDFLOW_BASE_URL:?set FEEDFLOW_BASE_URL}"
+      FEEDFLOW_SESSION_KEY: "${FEEDFLOW_SESSION_KEY:?set FEEDFLOW_SESSION_KEY}"
+    volumes:
+      # EBSをマウントしたホストの/mnt/feedflow-dataを永続化先にします。
+      - /mnt/feedflow-data:/data
+    networks:
+      - internal
+    expose:
+      - "8080"
+    # ホストへはポートを公開しません。到達はnginx経由のみとします。
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+      # Let's Encryptの証明書ストアです。certbotが書き込みnginxが読みます。
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # mTLSのローカルCA証明書です。
+      - /etc/feedflow/mtls:/etc/nginx/mtls:ro
+      # ACME http-01チャレンジ用のwebルートです。
+      - /var/www/certbot:/var/www/certbot:ro
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge

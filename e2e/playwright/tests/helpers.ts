@@ -1,0 +1,86 @@
+import { createServer, Server } from "node:http";
+import { AddressInfo } from "node:net";
+import { Page, expect } from "@playwright/test";
+
+// USERNAME はE2Eで登録するユーザー名です。
+export const USERNAME = "owner";
+// PASSWORD はE2Eで登録するパスワードです。
+export const PASSWORD = "correct-horse-battery-staple";
+
+// SAMPLE_RSS はテスト用フィードサーバが返すRSS2.0の本文です。
+export const SAMPLE_RSS = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>E2E Sample Feed</title>
+    <link>http://example.test/site</link>
+    <description>feedflow e2e sample</description>
+    <item>
+      <title>First E2E Article</title>
+      <link>http://example.test/articles/1</link>
+      <guid>http://example.test/articles/1</guid>
+      <description>Body of the first article for e2e.</description>
+      <pubDate>Mon, 26 May 2026 09:00:00 +0900</pubDate>
+    </item>
+    <item>
+      <title>Second E2E Article</title>
+      <link>http://example.test/articles/2</link>
+      <guid>http://example.test/articles/2</guid>
+      <description>Body of the second article for e2e.</description>
+      <pubDate>Mon, 26 May 2026 10:00:00 +0900</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+// startFeedServer はテスト用のフィード配信HTTPサーバを起動してURLを返します。
+export async function startFeedServer(): Promise<{ url: string; close: () => Promise<void> }> {
+  const server: Server = createServer((req, res) => {
+    if (req.url === "/feed.xml") {
+      res.writeHead(200, { "Content-Type": "application/rss+xml; charset=utf-8" });
+      res.end(SAMPLE_RSS);
+      return;
+    }
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("not found");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${addr.port}/feed.xml`;
+  const close = () =>
+    new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    );
+  return { url, close };
+}
+
+// completeSetup は初回セットアップ画面でユーザーを登録します。
+export async function completeSetup(page: Page): Promise<void> {
+  await page.goto("/setup");
+  await expect(page.locator("form.auth-form")).toBeVisible();
+  await page.fill('form.auth-form input[name="username"]', USERNAME);
+  await page.fill('form.auth-form input[name="password"]', PASSWORD);
+  await page.click('form.auth-form button[type="submit"]');
+  await expect(page).toHaveURL(/\/login$/);
+}
+
+// login はログイン画面から認証してメイン画面へ遷移します。
+export async function login(page: Page): Promise<void> {
+  await page.goto("/login");
+  await expect(page.locator("form.auth-form")).toBeVisible();
+  await page.fill('form.auth-form input[name="username"]', USERNAME);
+  await page.fill('form.auth-form input[name="password"]', PASSWORD);
+  await page.click('form.auth-form button[type="submit"]');
+  await expect(page.locator(".app-shell")).toBeVisible();
+}
+
+// setupAndLogin は初回セットアップとログインを連続して行います。
+export async function setupAndLogin(page: Page): Promise<void> {
+  await completeSetup(page);
+  await login(page);
+}
+
+// addFeed は購読追加フォームにフィードURLを入れて登録します。
+export async function addFeed(page: Page, feedURL: string): Promise<void> {
+  await page.fill('.subscribe-form input[name="url"]', feedURL);
+  await page.click('.subscribe-form button[type="submit"]');
+  await expect(page.locator("#tree-pane")).toContainText("E2E Sample Feed");
+}

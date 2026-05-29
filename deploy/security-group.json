@@ -1,0 +1,50 @@
+{
+  "GroupName": "feedflow-sg",
+  "Description": "feedflow inbound rules. 443 for mTLS terminated by nginx and SSH from operator IP only.",
+  "IngressRules": [
+    {
+      "IpProtocol": "tcp",
+      "FromPort": 443,
+      "ToPort": 443,
+      "IpRanges": [
+        {
+          "CidrIp": "0.0.0.0/0",
+          "Description": "HTTPS. mTLS by nginx rejects clients without a certificate."
+        }
+      ]
+    },
+    {
+      "IpProtocol": "tcp",
+      "FromPort": 80,
+      "ToPort": 80,
+      "IpRanges": [
+        {
+          "CidrIp": "0.0.0.0/0",
+          "Description": "HTTP for ACME http-01 challenge and redirect to HTTPS only."
+        }
+      ]
+    },
+    {
+      "IpProtocol": "tcp",
+      "FromPort": 22,
+      "ToPort": 22,
+      "IpRanges": [
+        {
+          "CidrIp": "203.0.113.10/32",
+          "Description": "SSH from operator IP only. Replace with your global IP /32."
+        }
+      ]
+    }
+  ],
+  "EgressRules": [
+    {
+      "IpProtocol": "-1",
+      "IpRanges": [
+        {
+          "CidrIp": "0.0.0.0/0",
+          "Description": "All outbound. Required for feed polling and Let's Encrypt."
+        }
+      ]
+    }
+  ]
+}

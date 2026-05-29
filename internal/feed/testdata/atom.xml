@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Sample Atom Feed</title>
+  <link href="https://sample.example.com/" rel="alternate"/>
+  <link href="https://sample.example.com/atom.xml" rel="self"/>
+  <updated>2026-03-02T08:00:00Z</updated>
+  <entry>
+    <title>Hello Atom</title>
+    <id>tag:sample.example.com,2026:hello-atom</id>
+    <link href="https://sample.example.com/hello-atom" rel="alternate"/>
+    <summary>Short summary of the Atom entry.</summary>
+    <content type="html">&lt;p&gt;Full Atom body content.&lt;/p&gt;</content>
+    <author><name>Atom Writer</name></author>
+    <published>2026-03-01T00:00:00Z</published>
+    <updated>2026-03-02T08:00:00Z</updated>
+  </entry>
+</feed>

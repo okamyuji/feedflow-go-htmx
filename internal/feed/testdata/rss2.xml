@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Sample RSS Feed</title>
+    <link>https://sample.example.com/</link>
+    <description>A sample RSS 2.0 feed for tests</description>
+    <item>
+      <title>Hello RSS</title>
+      <link>https://sample.example.com/hello-rss</link>
+      <guid isPermaLink="true">https://sample.example.com/hello-rss</guid>
+      <description>Short summary of the RSS post.</description>
+      <content:encoded><![CDATA[<p>Full RSS body content.</p>]]></content:encoded>
+      <author>writer@sample.example.com</author>
+      <pubDate>Mon, 02 Mar 2026 08:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>

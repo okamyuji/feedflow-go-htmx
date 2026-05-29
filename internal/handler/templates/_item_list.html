@@ -1,0 +1,52 @@
+{{ define "_item_list.html" }}
+<div class="item-list" data-view="{{ .DefaultView }}">
+  <div class="item-list-bar">
+    <form method="post" action="/app/items/markall" class="inline-form" hx-post="/app/items/markall" hx-target="#main-pane">
+      <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+      <button class="btn-ghost" type="submit">全既読</button>
+    </form>
+  </div>
+  <ul class="item-cards">
+    {{ range .Items }}
+    <li
+      class="item-card{{ if .Read }} is-read{{ end }}"
+      id="item-{{ .ID }}"
+      data-feed="{{ .FeedID }}"
+      data-item="{{ .ID }}"
+    >
+      <a
+        class="item-open"
+        href="{{ .Link }}"
+        hx-get="/app/items/{{ .FeedID }}/{{ .ID }}"
+        hx-target="#reading-overlay"
+        hx-swap="innerHTML"
+        @click.prevent="openOverlay($event, '{{ .FeedID }}', '{{ .ID }}')"
+      >
+        <h3 class="item-title">{{ .Title }}</h3>
+        <p class="item-summary">{{ .Summary }}</p>
+        <div class="item-meta">
+          <time>{{ .PublishedAt }}</time>
+          {{ if .Starred }}<span class="item-star">保存済み</span>{{ end }}
+        </div>
+      </a>
+      <div class="item-quick">
+        <button
+          class="quick-btn"
+          hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/star"
+          hx-vals='{"starred": "{{ if .Starred }}false{{ else }}true{{ end }}"}'
+          hx-target="#item-{{ .ID }}"
+          hx-swap="outerHTML"
+        >{{ if .Starred }}スター解除{{ else }}スター{{ end }}</button>
+        <button
+          class="quick-btn"
+          hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/read"
+          hx-vals='{"read": "{{ if .Read }}false{{ else }}true{{ end }}"}'
+          hx-target="#item-{{ .ID }}"
+          hx-swap="outerHTML"
+        >{{ if .Read }}未読に戻す{{ else }}既読{{ end }}</button>
+      </div>
+    </li>
+    {{ end }}
+  </ul>
+</div>
+{{ end }}

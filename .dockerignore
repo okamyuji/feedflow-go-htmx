@@ -1,0 +1,18 @@
+# ビルドコンテキストから除外します。embed対象のweb配下とGoソースだけを送ります。
+.git
+.github
+bin
+dist
+coverage.out
+coverage.html
+data
+*.pem
+*.key
+*.crt
+.env
+node_modules
+e2e
+docs
+deploy
+.superpowers
+.DS_Store

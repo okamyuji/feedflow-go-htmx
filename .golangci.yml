@@ -39,7 +39,6 @@ linters:
     gocritic:
       disabled-checks:
         - exitAfterDefer
-        - hugeParam
   exclusions:
     rules:
       - path: _test\.go

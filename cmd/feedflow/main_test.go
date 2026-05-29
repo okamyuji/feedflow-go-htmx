@@ -6,11 +6,15 @@ import (
 	"testing"
 )
 
-func TestHealthz(t *testing.T) {
+func TestBuildHandlerHealthz(t *testing.T) {
+	h, err := buildHandler()
+	if err != nil {
+		t.Fatalf("buildHandler returned error: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
 
-	healthz(rec, req)
+	h.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
