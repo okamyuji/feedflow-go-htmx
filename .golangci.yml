@@ -46,3 +46,4 @@ linters:
         linters:
           - gosec
           - errcheck
+          - noctx

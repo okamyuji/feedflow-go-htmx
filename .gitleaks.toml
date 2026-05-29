@@ -10,10 +10,13 @@ description = """\
 .env.exampleはマスク済みのサンプルなのでallowlist。
 .envはローカル専用かつ.gitignoreで保護されておりgitに混入しないため
 作業ツリーのno-git scanからは除外する。
+docs/superpowers配下の計画書はE2Eハードニング用のテスト鍵を例示として含むため
+ドキュメントとして除外する。これらは実値ではなくテスト専用の固定文字列である。
 """
 paths = [
   '''\.env\.example''',
   '''^\.env$''',
+  '''^docs/superpowers/''',
 ]
 regexes = [
   '''\*\*\*MASKED\*\*\*''',
