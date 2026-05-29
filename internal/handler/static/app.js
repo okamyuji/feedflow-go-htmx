@@ -42,8 +42,13 @@ function registerFeedflow() {
     activeFeed: "",
     activeItem: "",
     sidebarOpen: true,
+    autoRead: true,
+    markedRead: null,
+    feedFilter: "",
+    markMenuOpen: false,
 
     init() {
+      this.markedRead = new Set();
       const saved = localStorage.getItem("feedflow-theme");
       const initial = document.documentElement.getAttribute("data-theme");
       if (saved === "dark" || saved === "light") {
@@ -56,10 +61,54 @@ function registerFeedflow() {
       if (sidebar === "closed") {
         this.sidebarOpen = false;
       }
+      this.autoRead = document.body.getAttribute("data-auto-read") !== "false";
     },
 
     get themeLabel() {
-      return this.theme === "dark" ? "昼" : "夜";
+      return this.theme === "dark" ? "ライト" : "ダーク";
+    },
+
+    // applyFeedFilter feedFilterの文字列でサイドバーのフィード行を絞り込みます。
+    // フィード一覧は既にDOMにあるため、ネットワークを介さずクライアントだけで表示と非表示を切り替えます。
+    // 固定ナビ(すべて/既読/スター/あとで読む)は対象にせず常に表示します。一致なしは案内を出します。
+    applyFeedFilter() {
+      const q = (this.feedFilter || "").trim().toLowerCase();
+      const items = document.querySelectorAll(".tree-feeds .tree-feed");
+      let visible = 0;
+      items.forEach((li) => {
+        const label = (li.getAttribute("data-label") || "").toLowerCase();
+        const match = q === "" || label.indexOf(q) !== -1;
+        li.style.display = match ? "" : "none";
+        if (match) {
+          visible += 1;
+        }
+      });
+      const empty = document.querySelector(".tree-feed-empty");
+      if (empty) {
+        empty.style.display = q !== "" && visible === 0 ? "" : "none";
+      }
+    },
+
+    // onFeedFilter 入力のたびに即時で絞り込みます。値はイベントから直接読み、空にした時点で全表示へ戻します。
+    onFeedFilter(event) {
+      this.feedFilter = event.target.value;
+      this.applyFeedFilter();
+    },
+
+    // clearFeedFilter 絞り込みを解除して全フィードを再表示します。クリアボタンとEscapeキーから呼びます。
+    clearFeedFilter() {
+      this.feedFilter = "";
+      this.applyFeedFilter();
+    },
+
+    // toggleMarkMenu 一括既読のサブメニュー(すべてのフィードを既読)の開閉を切り替えます。
+    toggleMarkMenu() {
+      this.markMenuOpen = !this.markMenuOpen;
+    },
+
+    // closeMarkMenu 一括既読のサブメニューを閉じます。外側クリックや項目選択で呼びます。
+    closeMarkMenu() {
+      this.markMenuOpen = false;
     },
 
     get sidebarClass() {
@@ -98,6 +147,9 @@ function registerFeedflow() {
     },
 
     onOverlayScroll(event) {
+      if (!this.autoRead) {
+        return;
+      }
       const el = event.target;
       const reachedEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
       if (reachedEnd && this.activeItem) {
@@ -106,6 +158,40 @@ function registerFeedflow() {
           { read: "true" }
         );
       }
+    },
+
+    // onListScroll 記事一覧をスクロールしたとき上端より上へ流れた未読カードを既読にします。
+    // 自動既読がオフのときは何もしません。同じ記事を二重送信しないようmarkedReadで記録します。
+    // htmx.ajaxで既読化することでカードの再描画と未読数のout-of-band更新を同時に行います。
+    onListScroll() {
+      if (!this.autoRead) {
+        return;
+      }
+      const bar = document.querySelector(".app-bar");
+      const threshold = Math.max(0, bar ? bar.getBoundingClientRect().bottom : 0);
+      const cards = document.querySelectorAll(".item-card:not(.is-read)");
+      cards.forEach((card) => {
+        if (card.getBoundingClientRect().bottom > threshold) {
+          return;
+        }
+        const feedID = card.getAttribute("data-feed");
+        const itemID = card.getAttribute("data-item");
+        if (!feedID || !itemID) {
+          return;
+        }
+        const key = feedID + "/" + itemID;
+        if (this.markedRead.has(key)) {
+          return;
+        }
+        this.markedRead.add(key);
+        card.classList.add("is-read");
+        window.htmx.ajax("POST", "/app/items/" + feedID + "/" + itemID + "/read", {
+          source: card,
+          target: "#item-" + itemID,
+          swap: "outerHTML",
+          values: { read: "true" },
+        });
+      });
     },
 
     focusNextCard(delta) {

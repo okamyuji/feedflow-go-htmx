@@ -2,6 +2,19 @@
 
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## 実装更新メモ(計画後の全面変更)
+
+この計画の初版はnginxのmTLSとLet's Encryptとcertbotを前提にしていましたが、実装ではデプロイ方式を全面的に変更しました。以降のタスク本文(mTLS、Let's Encrypt、certbot、security-group.json、ローカルmTLS疎通など)は歴史的経緯として残しますが、現行の正は`deploy/terraform`配下のコードと設計書セクション9.2と11です。現行方式の要点は次のとおりです。
+
+- terraformでAWSとCloudflareの双方を管理します。AWSは既定VPCにElastic IP付きの単一EC2(t4g.small、ap-northeast-1)とEBSを作り、SSHプロビジョナでアプリのtar.gzを配送してEC2上でdocker composeビルドします
+- 本人限定はCloudflare Accessで所有者メールだけを通過させます。当初設計のブラウザクライアント証明書(mTLS)はCloudflareで終端され通らないため廃止しました
+- エッジHTTPSはCloudflareプロキシ(Aレコードproxied)で終端し、オリジンIPを秘匿します。SSL/TLSモードはFull(strict)です
+- オリジンはCloudflare Origin CA証明書を配置します。Origin CA Keyは非推奨のため使わず、terraformの管理するAPIトークンで発行します(プロバイダv3.32.0以降の仕様、トークンにSSL and Certificates編集権限が必要)
+- Let's Encryptとcertbotは使いません。証明書更新は不要です
+- Security GroupはCloudflareのIP範囲からの443と80に限定し、SSHは運用者IPのみに限定します。nginxはCF-Connecting-IPで実クライアントIPを復元します
+- Amazon Linux 2023の既定buildxは古くcompose buildが0.17.0以上を要求するため、最新のbuildxプラグインを起動時に手動導入します
+- 秘密値はgitignore済みの`deploy/terraform/secrets.auto.tfvars`に置き、Cloudflare APIトークンとアカウントIDを与えます
+
 Goal: feedflowを本番起動できる形まで結線し、単一EC2(ARMのt4g系)へデプロイする構成一式を整えます。まずstoreとfeedとserviceとpollerとauthの具象をcmd側で組み立て、認証アダプタを介してhandler.Depsへ注入し、Phase7で残ったnil依存を解消します。そのうえでマルチステージのDockerfileでembed同梱の単一バイナリを作り、compose.ymlでnginxコンテナとGoアプリコンテナを同居させ、nginxでTLS終端とmTLSクライアント証明書検証を行い、EBSでdataディレクトリを永続化し、Security Groupは443とSSHのみを開放します。ALBとNLBは使いません。
 
 Architecture: 前段にnginxコンテナを置き、443でTLS終端し、クライアント証明書を検証してから内部ネットワーク経由でアプリコンテナの8080へリバースプロキシします。アプリコンテナはembed同梱の単一バイナリで、EBSにマウントしたdataディレクトリへJSONを永続化します。証明書はLet's Encryptのサーバ証明書と、自前のローカルCAで発行したクライアント証明書を用います。アプリはnginx経由のみ到達可能とし、ホストの443とSSHだけをSecurity Groupで開放します。デプロイ手順とverify-deploy.shで構成の妥当性を機械的に検証します。

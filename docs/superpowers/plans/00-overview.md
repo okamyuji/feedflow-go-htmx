@@ -4,7 +4,7 @@
 
 Goal: Web上で動作する個人専用のRSS Readerを、Goの標準ライブラリ中心とHTMXとAlpine.jsで実装し、JSONファイル永続化と単一EC2デプロイで完成させます。
 
-Architecture: クリーンアーキテクチャで各層をinternal/portのインターフェースで疎結合します。全データをメモリ常駐させアトミックJSONで永続化します。フィードはバックグラウンドで定期ポーリングし、HTMXで部分更新します。nginxのmTLSとアプリログインの二層で所有者だけに限定します。
+Architecture: クリーンアーキテクチャで各層をinternal/portのインターフェースで疎結合します。全データをメモリ常駐させアトミックJSONで永続化します。フィードはバックグラウンドで定期ポーリングし、HTMXで部分更新します。CloudflareプロキシとCloudflare Accessとアプリログインの二層で所有者だけに限定します(当初設計のnginx mTLSは廃止しました)。
 
 Tech Stack: Go(標準ライブラリ)、golang.org/x/net/html、golang.org/x/crypto、HTMX、Alpine.js(CSPビルドの@alpinejs/csp)、Docker Compose、nginx、Playwright(TypeScript)。CSPのscript-src selfと両立させるため、unsafe-evalを要求する標準ビルドではなくCSPビルドを採用します。
 
@@ -24,7 +24,7 @@ Tech Stack: Go(標準ライブラリ)、golang.org/x/net/html、golang.org/x/cry
 | Phase5 | 06-poller.md | ポーラー | 定期ポーリング、手動更新 |
 | Phase6 | 07-auth.md | 認証とセキュリティ | scrypt、セッション、初回セットアップ、CSRF、レートリミット、ヘッダ |
 | Phase7 | 08-handler-ui.md | ハンドラとUI | ルーティング、テンプレート、HTMX/Alpine、CSS |
-| Phase8 | 09-deploy.md | デプロイ | nginx mTLS、compose、Dockerfile、EC2手順 |
+| Phase8 | 09-deploy.md | デプロイ | terraformでCloudflareプロキシとAccessとOrigin CA、compose、Dockerfile、EC2手順(当初のmTLSとLet's Encryptは廃止) |
 | Phase9 | 10-e2e.md | E2Eと堅牢化検証 | Playwright、verify-hardening.sh |
 
 ## 1 共通規約(全フェーズで厳守)
@@ -108,8 +108,9 @@ feedflow-go-htmx/
 │       └── obs.go                CloseAndLog、WriteAndLog
 ├── data/                         実行時生成、gitignore対象
 ├── deploy/
-│   ├── nginx/                    nginx.conf、mTLS設定
-│   └── README.md                 EC2とLet's Encryptと証明書配布の手順
+│   ├── nginx/                    nginx.conf、Cloudflare向けリバースプロキシ設定
+│   ├── terraform/                AWSとCloudflareをまとめて管理するterraform一式
+│   └── README.md                 EC2とCloudflareとterraformの手順
 ├── e2e/playwright/               Playwright(TypeScript)
 ├── scripts/
 │   ├── quality-gate.sh

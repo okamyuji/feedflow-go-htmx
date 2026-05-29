@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 )
@@ -35,10 +36,16 @@ func (s *stubSettings) Update(settings domain.Settings) error {
 type stubOPML struct {
 	imported  int
 	exportOut []byte
+	called    chan struct{}
 }
 
-func (s *stubOPML) Import(_ context.Context, _ []byte) (int, error) { return s.imported, nil }
-func (s *stubOPML) Export() ([]byte, error)                         { return s.exportOut, nil }
+func (s *stubOPML) Import(_ context.Context, _ []byte) (int, error) {
+	if s.called != nil {
+		close(s.called)
+	}
+	return s.imported, nil
+}
+func (s *stubOPML) Export() ([]byte, error) { return s.exportOut, nil }
 
 func newSettingsHandler(t *testing.T, st *stubSettings, op *stubOPML) *Handler {
 	t.Helper()
@@ -103,6 +110,68 @@ func TestSettingsUpdateSuccess(t *testing.T) {
 	}
 }
 
+func TestSettingsUpdateAutoReadCheckbox(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		checkbox []string
+		want     bool
+	}{
+		{name: "checked", checkbox: []string{"true"}, want: true},
+		{name: "unchecked", checkbox: nil, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			st := &stubSettings{current: domain.DefaultSettings()}
+			h := newSettingsHandler(t, st, &stubOPML{})
+			form := url.Values{
+				"poll_interval":       {"30m"},
+				"max_items":           {"100"},
+				"read_retention_days": {"14"},
+				"theme":               {"dark"},
+				"default_view":        {"card"},
+			}
+			if tc.checkbox != nil {
+				form["auto_read_on_scroll"] = tc.checkbox
+			}
+			req := httptest.NewRequest(http.MethodPost, "/app/settings", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+			rec := httptest.NewRecorder()
+
+			h.settingsUpdate(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+			}
+			if st.updated.AutoReadOnScroll != tc.want {
+				t.Fatalf("AutoReadOnScroll got %v want %v", st.updated.AutoReadOnScroll, tc.want)
+			}
+		})
+	}
+}
+
+func TestSettingsPageRendersAutoReadCheckbox(t *testing.T) {
+	t.Parallel()
+	st := &stubSettings{current: domain.DefaultSettings()}
+	h := newSettingsHandler(t, st, &stubOPML{})
+	req := httptest.NewRequest(http.MethodGet, "/app/settings", nil)
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.settingsPage(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `name="auto_read_on_scroll"`) {
+		t.Fatalf("settings should render the auto read checkbox: %q", body)
+	}
+	if !strings.Contains(body, "checked") {
+		t.Fatalf("default settings should check the auto read box: %q", body)
+	}
+}
+
 func TestSettingsUpdateInvalidShowsError(t *testing.T) {
 	t.Parallel()
 	st := &stubSettings{current: domain.DefaultSettings(), updateErr: errors.New("invalid settings")}
@@ -150,9 +219,10 @@ func TestOPMLExport(t *testing.T) {
 	}
 }
 
-func TestOPMLImport(t *testing.T) {
+func TestOPMLImportRunsInBackground(t *testing.T) {
 	t.Parallel()
-	op := &stubOPML{imported: 3}
+	called := make(chan struct{})
+	op := &stubOPML{imported: 3, called: called}
 	h := newSettingsHandler(t, &stubSettings{current: domain.DefaultSettings()}, op)
 
 	var body bytes.Buffer
@@ -175,10 +245,18 @@ func TestOPMLImport(t *testing.T) {
 
 	h.opmlImport(rec, req)
 
+	// リクエストは取得完了を待たず即座に200を返し、開始した旨を伝えます。
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
 	}
-	if !strings.Contains(rec.Body.String(), "3") {
-		t.Fatalf("body should report import count: %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "インポートを開始") {
+		t.Fatalf("body should report import started: %q", rec.Body.String())
+	}
+
+	// インポートはバックグラウンドで起動されます。
+	select {
+	case <-called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("import was not started in background")
 	}
 }

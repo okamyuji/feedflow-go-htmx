@@ -1,21 +1,34 @@
 {{ define "_tree.html" }}
 <nav class="tree" aria-label="購読ツリー">
-  <ul class="tree-list">
-    {{ range .Tree }}
-    <li class="tree-item tree-{{ .Kind }}{{ if .HasError }} tree-error{{ end }}">
-      <a
-        class="tree-link"
-        href="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else if eq .Kind "board" }}board={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
-        hx-get="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else if eq .Kind "board" }}board={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
-        hx-target="#main-pane"
-        hx-push-url="true"
-      >
-        <span class="tree-label">{{ .Label }}</span>
-        {{ if gt .UnreadCount 0 }}<span class="tree-badge">{{ .UnreadCount }}</span>{{ end }}
-        {{ if .HasError }}<span class="tree-error-mark" title="取得エラー">!</span>{{ end }}
-      </a>
-    </li>
-    {{ end }}
+  <ul class="tree-list tree-nav">
+    {{ range .Tree }}{{ if ne .Kind "feed" }}{{ template "_tree_node.html" . }}{{ end }}{{ end }}
+  </ul>
+
+  <div class="feed-filter">
+    <input
+      class="feed-filter-input"
+      type="search"
+      placeholder="フィードを絞り込む"
+      aria-label="フィードを絞り込む"
+      autocomplete="off"
+      x-model="feedFilter"
+      x-init="applyFeedFilter"
+      @input="onFeedFilter"
+      @keydown.escape="clearFeedFilter"
+    >
+    <button
+      class="feed-filter-clear"
+      type="button"
+      aria-label="絞り込みを解除"
+      @click="clearFeedFilter"
+      x-show="feedFilter"
+      style="display:none"
+    >×</button>
+  </div>
+
+  <ul class="tree-list tree-feeds">
+    {{ range .Tree }}{{ if eq .Kind "feed" }}{{ template "_tree_node.html" . }}{{ end }}{{ end }}
+    <li class="tree-feed-empty" style="display:none">該当するフィードがありません</li>
   </ul>
 
   <form

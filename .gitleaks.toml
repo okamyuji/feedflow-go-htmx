@@ -14,12 +14,19 @@ docs/superpowers配下の計画書はE2Eハードニング用のテスト鍵を�
 ドキュメントとして除外する。これらは実値ではなくテスト専用の固定文字列である。
 scripts/verify-hardening.shはローカル検証専用でFEEDFLOW_SESSION_KEYに固定の
 テスト鍵を埋め込むため除外する。これは実値ではなく検証スクリプト用の固定文字列である。
+deploy/terraform配下のtfstateとsecrets.auto.tfvarsとpemはいずれも.gitignoreで保護された
+ローカル専用の成果物でgitに混入しない。terraform apply後にローカルへ生成される実値だが
+追跡対象外のため、作業ツリーのno-git scanからは除外する。secrets.auto.tfvars.exampleは
+マスク済みのテンプレートで追跡対象だがプレースホルダのみのため誤検出しない。
 """
 paths = [
   '''\.env\.example''',
   '''^\.env$''',
   '''^docs/superpowers/''',
   '''^scripts/verify-hardening\.sh$''',
+  '''^deploy/terraform/.*\.tfstate.*$''',
+  '''^deploy/terraform/secrets\.auto\.tfvars$''',
+  '''^deploy/terraform/.*\.pem$''',
 ]
 regexes = [
   '''\*\*\*MASKED\*\*\*''',

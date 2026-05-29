@@ -49,6 +49,23 @@ func TestRouterHealthz(t *testing.T) {
 	}
 }
 
+func TestRouterRootRedirectsToApp(t *testing.T) {
+	t.Parallel()
+	h := newFullHandler(t, true)
+	srv := h.Routes()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusSeeOther)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/app" {
+		t.Fatalf("Location got %q want %q", loc, "/app")
+	}
+}
+
 func TestRouterAppRequiresAuth(t *testing.T) {
 	t.Parallel()
 	h := newFullHandler(t, false)

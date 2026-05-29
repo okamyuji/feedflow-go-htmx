@@ -110,8 +110,10 @@ func (s *Store) loadSlice(name string, dst any) error {
 }
 
 // loadSettings settings.jsonを読み込みます。ファイルが無い場合は既定値を保ちます。
+// 既定値を初期値として代入してからUnmarshalするため、JSONに無いキーは既定値が残ります。
+// これにより既存のsettings.jsonにauto_read_on_scrollが無くても既定のtrueになります。
 func (s *Store) loadSettings() error {
-	var loaded domain.Settings
+	loaded := domain.DefaultSettings()
 	err := readJSON(s.path(settingsFile), &loaded)
 	if err != nil {
 		if os.IsNotExist(err) {

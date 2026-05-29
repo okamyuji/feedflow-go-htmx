@@ -161,4 +161,70 @@ func TestFeedUnsubscribe(t *testing.T) {
 	if subs.unsubscribeID != "f1" {
 		t.Fatalf("unsubscribed id got %q want %q", subs.unsubscribeID, "f1")
 	}
+	if !strings.Contains(rec.Body.String(), `id="tree-pane"`) {
+		t.Fatalf("body should render the tree pane wrapper: %q", rec.Body.String())
+	}
+}
+
+func TestTreeRendersUnsubscribeButtonForFeeds(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	h := newAppHandler(t, subs, &stubItems{items: map[string][]domain.Item{}})
+	req := httptest.NewRequest(http.MethodDelete, "/app/feeds/missing", nil)
+	req.SetPathValue("feedID", "missing")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.feedUnsubscribe(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `hx-delete="/app/feeds/f1"`) {
+		t.Fatalf("feed node should expose an unsubscribe control: %q", body)
+	}
+	if !strings.Contains(body, "tree-unsubscribe") {
+		t.Fatalf("feed node should render the unsubscribe button: %q", body)
+	}
+}
+
+func TestBuildTreeCountsUnreadStream(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		"f1": {
+			{ID: "i1", FeedID: "f1"},
+			{ID: "i2", FeedID: "f1", Read: true},
+			{ID: "i3", FeedID: "f1"},
+		},
+	}}
+	h := newAppHandler(t, subs, items)
+
+	nodes, err := h.buildTree()
+	if err != nil {
+		t.Fatalf("buildTree returned error: %v", err)
+	}
+	var all, read, feed feedTreeNode
+	hasRead := false
+	for _, n := range nodes {
+		switch n.Kind {
+		case "all":
+			all = n
+		case "read":
+			read = n
+			hasRead = true
+		case "feed":
+			feed = n
+		}
+	}
+	if all.Label != "すべて" || all.UnreadCount != 2 {
+		t.Fatalf("all node should be the unread stream with 2 unread, got label=%q count=%d", all.Label, all.UnreadCount)
+	}
+	if !hasRead || read.Label != "既読" {
+		t.Fatalf("tree should contain a 既読 node, got %+v", read)
+	}
+	if read.UnreadCount != 0 {
+		t.Fatalf("既読 node should not carry an unread badge, got %d", read.UnreadCount)
+	}
+	if feed.UnreadCount != 2 {
+		t.Fatalf("feed node unread count got %d want 2", feed.UnreadCount)
+	}
 }

@@ -25,11 +25,12 @@ const (
 // HTTPFetcher net/httpを用いたport.Fetcherの実装です。
 // ETagとLast-Modifiedによる条件付き取得とgzip展開を行い、SSRF対策として接続先IPを検査します。
 type HTTPFetcher struct {
-	client    *http.Client
-	logger    *slog.Logger
-	maxBytes  int64
-	timeout   time.Duration
-	userAgent string
+	client       *http.Client
+	logger       *slog.Logger
+	maxBytes     int64
+	timeout      time.Duration
+	userAgent    string
+	allowPrivate bool // trueのときSSRFガードを無効化しプライベートやループバック宛も許可します。テスト専用です
 }
 
 // FetcherOption HTTPFetcherの任意設定を上書きする関数オプションです。
@@ -62,6 +63,12 @@ func WithHTTPClient(c *http.Client) FetcherOption {
 	return func(f *HTTPFetcher) { f.client = c }
 }
 
+// WithAllowPrivateAddresses プライベートやループバック宛の取得を許可します。
+// SSRF対策を無効化するため本番では使わず、ローカルのE2Eなど信頼できる環境専用です。
+func WithAllowPrivateAddresses(allow bool) FetcherOption {
+	return func(f *HTTPFetcher) { f.allowPrivate = allow }
+}
+
 // NewHTTPFetcher 既定値とオプションからHTTPFetcherを構築します。
 // 既定のクライアントは接続先IPを検査するDialContextを備え、リダイレクトのたびにスキームと接続先を再検証します。
 func NewHTTPFetcher(opts ...FetcherOption) *HTTPFetcher {
@@ -71,7 +78,7 @@ func NewHTTPFetcher(opts ...FetcherOption) *HTTPFetcher {
 		userAgent: defaultUserAgent,
 	}
 	transport := &http.Transport{
-		DialContext:           guardedDialContext,
+		DialContext:           f.dialContext,
 		MaxIdleConns:          10,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
@@ -92,20 +99,23 @@ func NewHTTPFetcher(opts ...FetcherOption) *HTTPFetcher {
 	return f
 }
 
-// guardedDialContext 接続直前に解決済みIPを検査し、ブロック対象なら接続を拒否します。
+// dialContext 接続直前に解決済みIPを検査し、ブロック対象なら接続を拒否します。
 // DNSリバインディングに対しても、実際に接続するアドレスを検査するため有効です。
-func guardedDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+// allowPrivateが真のときは検査を飛ばし、ローカルのE2Eなどでループバック宛を許可します。
+func (f *HTTPFetcher) dialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to split host port %q: %w", address, err)
 	}
-	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve host %q: %w", host, err)
-	}
-	for _, ip := range ips {
-		if isBlockedAddr(ip) {
-			return nil, fmt.Errorf("%w: host %q resolves to %s", ErrPrivateAddress, host, ip)
+	if !f.allowPrivate {
+		ips, lookupErr := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		if lookupErr != nil {
+			return nil, fmt.Errorf("failed to resolve host %q: %w", host, lookupErr)
+		}
+		for _, ip := range ips {
+			if isBlockedAddr(ip) {
+				return nil, fmt.Errorf("%w: host %q resolves to %s", ErrPrivateAddress, host, ip)
+			}
 		}
 	}
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}

@@ -1,135 +1,111 @@
 # feedflow デプロイ手順
 
-単一EC2(ARMのt4g系)とEBS、nginxコンテナとGoアプリコンテナの同居でfeedflowを公開します。ALBとNLBは使いません。前段のnginxでTLS終端とmTLSを行い、所有者だけがアクセスできるようにします。
+AWS の単一 EC2(ARM の t4g 系)と Cloudflare を terraform でまとめて管理してデプロイします。ALB と NLB は使わず、nginx コンテナと Go アプリコンテナを同居させます。本人限定は Cloudflare Access が担い、当初設計の nginx mTLS と Let's Encrypt と certbot は廃止しました。
 
 ## 構成図
 
 ```
-[ブラウザとクライアント証明書]
-        | 443でTLSとmTLS
-        v
-[EC2 t4g] -- compose --+-- nginx(443終端 / mTLS検証 / リバースプロキシ)
+[ブラウザ]
+   | HTTPS
+   v
+[Cloudflare エッジ] -- Access(所有者メールのみ許可) / プロキシでIP秘匿 / Full strict
+   | HTTPS(Cloudflare IP範囲のみ到達可)
+   v
+[EC2 t4g] -- compose --+-- nginx(443終端 / Origin CA証明書 / リバースプロキシ)
                        |        | 内部ネットワーク8080
                        +-- app(feedflow単一バイナリ / embed同梱)
                                 | /data
                        [EBSマウント /mnt/feedflow-data]
 ```
 
-## 1 EC2とEBSの準備
+## セキュリティの要点
 
-1. ARMのt4gインスタンスをAmazon Linux 2023のARM版で起動します。インスタンスタイプはt4g.smallなどを選びます
-2. EIPを割り当てて固定し、DNSのAレコードを`feedflow.example.com`からこのEIPへ向けます
-3. データ用のEBSボリュームを作成しインスタンスへアタッチします
-4. EBSをフォーマットして`/mnt/feedflow-data`へマウントします
+- Cloudflare Access がホスト名全体を保護し、所有者メールだけを通過させます。未認証はエッジで止まります
+- セキュリティグループは 443 と 80 を Cloudflare の IP 範囲だけに限定し、SSH は運用者 IP のみにします。これで Access を迂回したオリジン直アクセスを塞ぎます
+- オリジンは Cloudflare Origin CA 証明書を配置し SSL モードを Full(strict)にします。Origin CA Key は非推奨のため使わず、terraform の管理する API トークンで発行します
+- アプリ自身が scrypt と Cookie セッションでもう一段守ります
 
-```bash
-# デバイス名は環境で異なるためlsblkで確認します
-lsblk
-sudo mkfs -t ext4 /dev/nvme1n1
-sudo mkdir -p /mnt/feedflow-data
-sudo mount /dev/nvme1n1 /mnt/feedflow-data
-# 再起動後も維持するためfstabへ追記します
-echo "/dev/nvme1n1 /mnt/feedflow-data ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
-```
+## 前提
 
-## 2 Security Group
+- AWS は IAM Identity Center の SSO で認証します。長期アクセスキーは使いません。`aws sso login --profile <profile>` で都度ログインし、以降のコマンドに `AWS_PROFILE=<profile>` を付けます
+- Cloudflare で対象ゾーン(例 okamyuji.work)を管理済みで、Zero Trust(Access)を有効化済みであること
+- terraform 1.6 以降、AWS CLI v2、ローカルに git があること
 
-`deploy/security-group.json`の内容で受信規則を設定します。443は全世界へ開きますがmTLSで証明書なしを拒否します。80はLet's Encryptのhttp-01チャレンジと443へのリダイレクトのみに使います。SSHは運用元のIPの/32だけに限定し、JSON内の`203.0.113.10/32`を自分のグローバルIPへ書き換えます。
+## 1 Cloudflare の秘密値を用意する
 
-```bash
-MYIP="$(curl -fsS https://checkip.amazonaws.com)"
-echo "SSHを許可する自分のIPを表示します $MYIP/32 をsecurity-group.jsonの203.0.113.10/32と置換します"
-```
+ユーザー API トークンを作成します。マイプロフィールの API トークンからカスタムトークンを発行し、次の権限を付けます。権限グループ名は日本語ダッシュボードでも英語表記です。
 
-## 3 Dockerとcomposeの導入
+- ゾーン DNS 編集(対象ゾーン)
+- ゾーン ゾーン設定 編集(対象ゾーン)
+- ゾーン ゾーン 読み取り(対象ゾーン)
+- ゾーン SSL and Certificates 編集(対象ゾーン)
+- アカウント Access: Apps 編集
+- アカウント Access: Policies 編集
+
+アカウント ID も控えます。これらを gitignore 済みのファイルへ記入します。
 
 ```bash
-sudo dnf install -y docker
-sudo systemctl enable --now docker
-sudo usermod -aG docker ec2-user
-# composeプラグインを導入します
-sudo mkdir -p /usr/libexec/docker/cli-plugins
-ARCH="$(uname -m)"
-sudo curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-${ARCH}" \
-  -o /usr/libexec/docker/cli-plugins/docker-compose
-sudo chmod +x /usr/libexec/docker/cli-plugins/docker-compose
-docker compose version
+cd deploy/terraform
+cp secrets.auto.tfvars.example secrets.auto.tfvars
+# エディタで cloudflare_api_token と cloudflare_account_id を記入する
 ```
 
-## 4 ソース配置と環境変数
+## 2 変数の既定値
+
+`variables.tf` の既定は次のとおりです。必要なら secrets.auto.tfvars や別の tfvars で上書きします。
+
+- `region` ap-northeast-1
+- `instance_type` t4g.small
+- `zone_name` okamyuji.work
+- `hostname` feedflow.okamyuji.work
+- `access_owner_email` okamyuji@gmail.com
+- `ssh_ingress_cidr` 空のときは実行環境のグローバル IP の /32 を自動で使う
+
+## 3 init と plan と apply
 
 ```bash
-git clone https://github.com/okamyuji/feedflow-go-htmx.git
-cd feedflow-go-htmx
-cp .env.example .env
-# .envを編集します。最低でも次を設定します
-#   FEEDFLOW_BASE_URL=https://feedflow.example.com
-#   FEEDFLOW_SESSION_KEY=$(openssl rand -base64 32)
-export FEEDFLOW_BASE_URL=https://feedflow.example.com
-export FEEDFLOW_SESSION_KEY="$(openssl rand -base64 32)"
+cd deploy/terraform
+aws sso login --profile <profile>
+
+AWS_PROFILE=<profile> terraform init
+AWS_PROFILE=<profile> terraform plan
+AWS_PROFILE=<profile> terraform apply
 ```
 
-## 5 mTLSのCAとクライアント証明書
+apply で作成されるものは、Elastic IP 付きの EC2 と追加 EBS、Cloudflare の A レコード(プロキシ ON)、SSL モード Full(strict)、Origin CA 証明書、Zero Trust Access のアプリと所有者許可ポリシー、Cloudflare IP に限定したセキュリティグループです。アプリは SSH プロビジョナで配送し EC2 上で docker compose ビルドします。Amazon Linux 2023 の既定 buildx は古く compose build が 0.17.0 以上を要求するため、最新 buildx を起動時に手動導入します。
+
+## 4 出力と動作確認
 
 ```bash
-# CAを作成します。出力は/etc/feedflow/mtlsです
-sudo bash deploy/scripts/make-mtls-ca.sh /etc/feedflow/mtls
-# 自分用のクライアント証明書を発行します
-bash deploy/scripts/make-client-cert.sh /etc/feedflow/mtls okamyuji ./client-certs
-# 生成された./client-certs/okamyuji.p12をローカル端末へscpで取得しブラウザへ取り込みます
+AWS_PROFILE=<profile> terraform output
 ```
 
-クライアント証明書の取り込み手順です。
+主な出力は次のとおりです。
 
-- macOSのChromeとSafariはキーチェーンアクセスへ.p12をインポートし、発行時のパスフレーズを入力します
-- Firefoxは設定の証明書マネージャの個人タブから.p12をインポートします
-- iOSは構成プロファイルとして.p12を取り込みます
+- `app_url` 公開 URL(例 https://feedflow.okamyuji.work)
+- `elastic_ip` 割り当てた EIP
+- `dns_record` 作成した A レコード(proxied)
+- `access_application` Access が保護するドメイン
+- `ssh_command` EC2 への SSH 例
 
-CA秘密鍵`/etc/feedflow/mtls/ca.key`は配布せず、サーバ上だけに保管します。
+ブラウザで `app_url` を開くと、まず Cloudflare Access の認証(所有者メールへのアクセスコード)を求められます。通過後にアプリのログイン画面が出ます。初回はオーナー未登録のためセットアップ画面になり、ユーザー名とパスワードを登録します。
 
-## 6 TLSサーバ証明書
+## 5 更新の反映
 
-初回はnginxが443で起動できるよう、先に80だけでチャレンジを通します。`deploy/nginx/conf.d/feedflow.conf`の`server_name`を実ドメインへ書き換えてから取得します。
+アプリのソースを変更したら、同じ apply を再実行します。バンドルのハッシュが変わると EC2 でイメージを再ビルドしてコンテナを再起動します。静的資産は URL にコンテンツハッシュを付けているため、ブラウザと Cloudflare エッジは確実に最新を取得します。
 
 ```bash
-# server_nameを実ドメインへ置換します
-sed -i 's/feedflow.example.com/your-real-domain.example/g' deploy/nginx/conf.d/feedflow.conf
-# 証明書を取得します
-sudo bash deploy/scripts/issue-tls-cert.sh your-real-domain.example you@example.com
+AWS_PROFILE=<profile> terraform apply
 ```
 
-## 7 起動
+## 6 バックアップ
+
+data ディレクトリは EBS 上の `/mnt/feedflow-data` にあります。EBS スナップショットを定期取得します。アプリは全データをメモリ常駐しつつ `os.Rename` でアトミックに JSON へ書き込むため、スナップショット時点の整合は保たれます。
+
+## 7 取り消し
 
 ```bash
-docker compose up -d --build
-docker compose ps
-# nginxの設定を検証します
-docker compose exec nginx nginx -t
+AWS_PROFILE=<profile> terraform destroy
 ```
 
-## 8 動作確認
-
-```bash
-# 証明書なしは403で拒否されます
-curl -k -sS -o /dev/null -w "%{http_code}\n" https://your-real-domain.example/
-# 期待値は403です
-
-# クライアント証明書つきは到達します
-curl --cert ./client-certs/okamyuji.crt --key ./client-certs/okamyuji.key \
-  -sS -o /dev/null -w "%{http_code}\n" https://your-real-domain.example/healthz
-# 期待値は200です
-```
-
-## 9 証明書の更新
-
-Let's Encryptは90日で失効するため定期更新します。cronで月次更新しnginxをリロードします。
-
-```bash
-( sudo crontab -l 2>/dev/null; \
-  echo "0 3 1 * * cd $HOME/feedflow-go-htmx && bash deploy/scripts/issue-tls-cert.sh your-real-domain.example you@example.com && docker compose exec -T nginx nginx -s reload" ) \
-  | sudo crontab -
-```
-
-## 10 バックアップ
-
-dataディレクトリはEBS上にあります。EBSスナップショットを定期取得します。アプリは全データをメモリ常駐しつつ`os.Rename`でアトミックにJSONへ書き込むため、スナップショット時点の整合は保たれます。
+AWS と Cloudflare の双方の作成物をまとめて削除します。

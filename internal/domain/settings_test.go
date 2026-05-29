@@ -20,8 +20,20 @@ func TestDefaultSettings(t *testing.T) {
 	if s.DefaultView != ViewCard {
 		t.Fatalf("DefaultView got %q want %q", s.DefaultView, ViewCard)
 	}
+	if !s.AutoReadOnScroll {
+		t.Fatalf("AutoReadOnScroll got %v want true", s.AutoReadOnScroll)
+	}
 	if !s.Valid() {
 		t.Fatalf("DefaultSettings() must be valid")
+	}
+}
+
+func TestSettingsValidIgnoresAutoRead(t *testing.T) {
+	t.Parallel()
+	s := DefaultSettings()
+	s.AutoReadOnScroll = false
+	if !s.Valid() {
+		t.Fatalf("Valid() must not depend on AutoReadOnScroll")
 	}
 }
 

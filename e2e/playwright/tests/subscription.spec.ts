@@ -21,7 +21,7 @@ test.describe("購読追加と記事一覧", () => {
   test("購読したフィードを開くと記事が一覧に並ぶ", async ({ page }) => {
     await setupAndLogin(page);
     await addFeed(page, feed.url);
-    await page.click('#tree-pane a.tree-link:has-text("E2E Sample Feed")');
+    await page.locator('#tree-pane a.tree-link', { hasText: "E2E Sample Feed" }).last().click();
     const items = page.locator(".item-list li.item-card");
     await expect(items).toHaveCount(2);
     await expect(page.locator(".item-list")).toContainText("First E2E Article");
@@ -31,7 +31,7 @@ test.describe("購読追加と記事一覧", () => {
   test("登録直後の記事はすべて未読である", async ({ page }) => {
     await setupAndLogin(page);
     await addFeed(page, feed.url);
-    await page.click('#tree-pane a.tree-link:has-text("E2E Sample Feed")');
+    await page.locator('#tree-pane a.tree-link', { hasText: "E2E Sample Feed" }).last().click();
     const unread = page.locator(".item-list li.item-card:not(.is-read)");
     await expect(unread).toHaveCount(2);
   });

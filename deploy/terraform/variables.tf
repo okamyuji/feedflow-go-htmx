@@ -30,14 +30,39 @@ variable "ssh_ingress_cidr" {
   default     = ""
 }
 
-variable "client_cert_name" {
-  description = "mTLS用に発行するクライアント証明書の名前を指定します。"
-  type        = string
-  default     = "owner"
-}
-
 variable "project_name" {
   description = "タグやキー名の接頭辞に使うプロジェクト名を指定します。"
   type        = string
   default     = "feedflow"
+}
+
+# Cloudflare関連の変数です。秘密値はsecrets.auto.tfvarsへ記入し、コードへは書きません。
+
+variable "cloudflare_api_token" {
+  description = "DNSとゾーン設定とAccessとOrigin CA証明書を操作するCloudflare APIトークンですDNS編集とゾーン設定編集とゾーン読み取りとSSL and Certificates編集とAccess AppsとPolicies編集の権限が要ります。"
+  type        = string
+  sensitive   = true
+}
+
+variable "cloudflare_account_id" {
+  description = "Cloudflare AccessアプリをひもづけるアカウントIDです。"
+  type        = string
+}
+
+variable "zone_name" {
+  description = "Cloudflareで管理しているゾーン名です。"
+  type        = string
+  default     = "okamyuji.work"
+}
+
+variable "hostname" {
+  description = "アプリを公開する完全修飾ホスト名です。AレコードとAccessとOrigin証明書に使います。"
+  type        = string
+  default     = "feedflow.okamyuji.work"
+}
+
+variable "access_owner_email" {
+  description = "Cloudflare Accessで通過を許可する所有者のメールアドレスです。"
+  type        = string
+  default     = "okamyuji@gmail.com"
 }

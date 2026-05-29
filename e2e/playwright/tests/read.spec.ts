@@ -8,7 +8,7 @@ test.describe("既読化", () => {
     feed = await startFeedServer();
     await setupAndLogin(page);
     await addFeed(page, feed.url);
-    await page.click('#tree-pane a.tree-link:has-text("E2E Sample Feed")');
+    await page.locator('#tree-pane a.tree-link', { hasText: "E2E Sample Feed" }).last().click();
     await expect(page.locator(".item-list li.item-card")).toHaveCount(2);
   });
 
@@ -23,17 +23,26 @@ test.describe("既読化", () => {
     await expect(page.locator(".item-list li.item-card").first()).toHaveClass(/is-read/);
   });
 
-  test("全既読ボタンですべての記事が既読になる", async ({ page }) => {
-    await page.click('.item-list-bar form[action="/app/items/markall"] button.btn-ghost');
+  test("このフィードを既読で表示中フィードの記事がすべて既読になる", async ({ page }) => {
+    await page.click(".item-list-bar .markread-primary");
     const unread = page.locator(".item-list li.item-card:not(.is-read)");
     await expect(unread).toHaveCount(0);
   });
 
+  test("すべてのフィードを既読のメニューは確認のうえ実行できる", async ({ page }) => {
+    // 破壊的操作のためhx-confirmのダイアログを受理します。
+    page.on("dialog", (dialog) => dialog.accept());
+    await page.click(".item-list-bar .markread-caret");
+    await expect(page.locator(".item-list-bar .markread-menu")).toBeVisible();
+    await page.click(".item-list-bar .markread-menu .markread-menu-item");
+    await expect(page.locator(".item-list li.item-card:not(.is-read)")).toHaveCount(0);
+  });
+
   test("既読状態は再読込後も維持される", async ({ page }) => {
-    await page.click('.item-list-bar form[action="/app/items/markall"] button.btn-ghost');
+    await page.click(".item-list-bar .markread-primary");
     await expect(page.locator(".item-list li.item-card:not(.is-read)")).toHaveCount(0);
     await page.reload();
-    await page.click('#tree-pane a.tree-link:has-text("E2E Sample Feed")');
+    await page.locator('#tree-pane a.tree-link', { hasText: "E2E Sample Feed" }).last().click();
     await expect(page.locator(".item-list li.item-card:not(.is-read)")).toHaveCount(0);
   });
 });

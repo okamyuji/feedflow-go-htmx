@@ -21,6 +21,11 @@ client-certs/
 .terraform-tmp/
 app_bundle.tar.gz
 
+# 秘密値を含むtfvars。exampleだけ追跡します。
+secrets.auto.tfvars
+*.auto.tfvars
+!*.auto.tfvars.example
+
 # crashログ
 crash.log
 crash.*.log

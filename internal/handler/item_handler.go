@@ -11,8 +11,10 @@ import (
 )
 
 // listItemsFor クエリに応じてミュート適用済みの記事群を取得します。
-// feedで単一フィード、categoryでカテゴリ所属フィード、boardでボード保存記事に絞り、
-// view(unread、starred、readlater)で状態を絞ります。いずれも無指定なら全件です。
+// feedで単一フィード、categoryでカテゴリ所属フィード、boardでボード保存記事に絞ります。
+// viewが既定(all、unread、無指定)とフィードやカテゴリの一覧は未読だけを残します。
+// view=readは既読だけ、starredはスター済み、readlaterはあとで読む済みを既読既読を問わず残します。
+// boardやstarredやreadlaterは保存系のため未読フィルタを適用しません。
 func (h *Handler) listItemsFor(r *http.Request) ([]domain.Item, error) {
 	q := r.URL.Query()
 	items, err := h.deps.Items.ListItems(q.Get("feed"))
@@ -21,12 +23,17 @@ func (h *Handler) listItemsFor(r *http.Request) ([]domain.Item, error) {
 	}
 
 	switch q.Get("view") {
-	case "unread":
-		items = keepItems(items, func(it domain.Item) bool { return !it.Read })
+	case "read":
+		items = keepItems(items, func(it domain.Item) bool { return it.Read })
 	case "starred":
 		items = keepItems(items, func(it domain.Item) bool { return it.Starred })
 	case "readlater":
 		items = keepItems(items, func(it domain.Item) bool { return it.ReadLater })
+	default:
+		// すべて、未読、フィード、カテゴリの一覧は未読のみを残します。ボード指定時は保存記事を尊重して残します。
+		if q.Get("board") == "" {
+			items = keepItems(items, func(it domain.Item) bool { return !it.Read })
+		}
 	}
 
 	if boardID := q.Get("board"); boardID != "" {
@@ -117,12 +124,49 @@ func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 	for _, it := range items {
 		views = append(views, toItemView(it))
 	}
-	data := pageData{CSRFToken: sess.CSRFToken, DefaultView: domain.ViewCard, Items: views}
+	scope, feedID, feedTitle := h.bulkReadContext(r)
+	data := pageData{
+		CSRFToken:        sess.CSRFToken,
+		DefaultView:      domain.ViewCard,
+		Items:            views,
+		BulkRead:         scope,
+		CurrentFeedID:    feedID,
+		CurrentFeedTitle: feedTitle,
+		CurrentLabel:     h.currentSelectionLabel(r),
+	}
 	if isHTMX(r) {
-		h.renderPartial(w, http.StatusOK, "_item_list.html", data)
+		h.renderWithTreeOOB(w, r, http.StatusOK, "_item_list.html", data)
 		return
 	}
-	h.renderShellPage(w, sess, "feedflow", data)
+	h.renderShellPage(w, r, sess, "feedflow", data)
+}
+
+// bulkReadContext 一括既読コントロールの表示範囲をリクエストのクエリから決めます。
+// 特定フィード選択時はそのフィードだけ、すべて(未読ストリーム)表示時は全フィード、
+// 既読やスターやあとで読むやカテゴリやボードのビューでは一括既読の対象が定まらないため非表示にします。
+func (h *Handler) bulkReadContext(r *http.Request) (scope, feedID, feedTitle string) {
+	q := r.URL.Query()
+	if feed := q.Get("feed"); feed != "" {
+		title := feed
+		if feeds, err := h.deps.Subscriptions.ListFeeds(); err == nil {
+			for _, f := range feeds {
+				if f.ID == feed {
+					title = f.Title
+					break
+				}
+			}
+		}
+		return "feed", feed, title
+	}
+	if q.Get("category") != "" || q.Get("board") != "" {
+		return "none", "", ""
+	}
+	switch q.Get("view") {
+	case "read", "starred", "readlater":
+		return "none", "", ""
+	default:
+		return "all", "", ""
+	}
 }
 
 // findItem 指定フィードと記事IDの記事を返します。見つからない場合はokがfalseになります。
@@ -152,19 +196,26 @@ func (h *Handler) itemOverlay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	markedRead := false
 	if !it.Read {
 		if err := h.deps.Items.MarkRead(feedID, itemID, true); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		markedRead = true
 	}
 	view := toItemView(it)
 	view.Content = cleanArticleHTML(it.Content)
+	if markedRead {
+		h.renderWithTreeOOB(w, r, http.StatusOK, "_item_overlay.html", view)
+		return
+	}
 	h.renderPartial(w, http.StatusOK, "_item_overlay.html", view)
 }
 
 // renderCard 操作後の単一記事カードを再描画します。
-func (h *Handler) renderCard(w http.ResponseWriter, feedID, itemID string) {
+// 既読状態が変わるため、ツリーの未読数をout-of-bandスワップで同時に更新します。
+func (h *Handler) renderCard(w http.ResponseWriter, r *http.Request, feedID, itemID string) {
 	it, ok, err := h.findItem(feedID, itemID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -174,10 +225,10 @@ func (h *Handler) renderCard(w http.ResponseWriter, feedID, itemID string) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	h.renderPartial(w, http.StatusOK, "_item_card.html", toItemView(it))
+	h.renderWithTreeOOB(w, r, http.StatusOK, "_item_card.html", toItemView(it))
 }
 
-// itemMarkRead 既読状態を設定し、記事カードを再描画します。
+// itemMarkRead 既読状態を設定し、記事カードとツリーの未読数を再描画します。
 func (h *Handler) itemMarkRead(w http.ResponseWriter, r *http.Request) {
 	feedID := r.PathValue("feedID")
 	itemID := r.PathValue("itemID")
@@ -186,10 +237,11 @@ func (h *Handler) itemMarkRead(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	h.renderCard(w, feedID, itemID)
+	h.renderCard(w, r, feedID, itemID)
 }
 
-// itemStar スター状態を設定し、記事カードを再描画します。
+// itemStar スター状態を設定し、呼び出し元に応じて再描画します。
+// オーバーレイからの呼び出しはアクション群を、記事カードからの呼び出しはカードを返します。
 func (h *Handler) itemStar(w http.ResponseWriter, r *http.Request) {
 	feedID := r.PathValue("feedID")
 	itemID := r.PathValue("itemID")
@@ -198,10 +250,15 @@ func (h *Handler) itemStar(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	h.renderCard(w, feedID, itemID)
+	if r.FormValue("surface") == "overlay" {
+		h.renderOverlayActions(w, feedID, itemID)
+		return
+	}
+	h.renderCard(w, r, feedID, itemID)
 }
 
-// itemReadLater あとで読む状態を設定します。オーバーレイからの呼び出しが多いため本文は返しません。
+// itemReadLater あとで読む状態を設定し、オーバーレイのアクション群を再描画します。
+// あとで読むボタンはオーバーレイにのみ存在するため、状態を反映したボタン群を返します。
 func (h *Handler) itemReadLater(w http.ResponseWriter, r *http.Request) {
 	feedID := r.PathValue("feedID")
 	itemID := r.PathValue("itemID")
@@ -210,7 +267,21 @@ func (h *Handler) itemReadLater(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	h.renderOverlayActions(w, feedID, itemID)
+}
+
+// renderOverlayActions 最新状態の記事を読み直し、オーバーレイのアクション群を再描画します。
+func (h *Handler) renderOverlayActions(w http.ResponseWriter, feedID, itemID string) {
+	it, ok, err := h.findItem(feedID, itemID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	h.renderPartial(w, http.StatusOK, "_overlay_actions.html", toItemView(it))
 }
 
 // itemMarkAll 指定フィードまたは全フィードを既読にし、記事一覧を再描画します。

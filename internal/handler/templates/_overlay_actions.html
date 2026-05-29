@@ -1,0 +1,19 @@
+{{ define "_overlay_actions.html" }}
+<div class="reading-actions" id="overlay-actions-{{ .ID }}">
+  <button
+    class="quick-btn{{ if .Starred }} is-active{{ end }}"
+    hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/star"
+    hx-vals='{"starred": "{{ if .Starred }}false{{ else }}true{{ end }}", "surface": "overlay"}'
+    hx-target="#overlay-actions-{{ .ID }}"
+    hx-swap="outerHTML"
+  >{{ if .Starred }}スター済み{{ else }}スター{{ end }}</button>
+  <button
+    class="quick-btn{{ if .ReadLater }} is-active{{ end }}"
+    hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/readlater"
+    hx-vals='{"read_later": "{{ if .ReadLater }}false{{ else }}true{{ end }}", "surface": "overlay"}'
+    hx-target="#overlay-actions-{{ .ID }}"
+    hx-swap="outerHTML"
+  >{{ if .ReadLater }}あとで読む済み{{ else }}あとで読む{{ end }}</button>
+  <a class="quick-btn" href="{{ .Link }}" target="_blank" rel="noopener noreferrer">元記事</a>
+</div>
+{{ end }}

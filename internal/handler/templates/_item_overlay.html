@@ -2,21 +2,7 @@
 <article class="reading-article" data-feed="{{ .FeedID }}" data-item="{{ .ID }}">
   <header class="reading-head">
     <button class="icon-btn" @click="closeOverlay" aria-label="閉じる">閉じる</button>
-    <div class="reading-actions">
-      <button
-        class="quick-btn"
-        hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/star"
-        hx-vals='{"starred": "{{ if .Starred }}false{{ else }}true{{ end }}"}'
-        hx-swap="none"
-      >{{ if .Starred }}スター解除{{ else }}スター{{ end }}</button>
-      <button
-        class="quick-btn"
-        hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/readlater"
-        hx-vals='{"read_later": "{{ if .ReadLater }}false{{ else }}true{{ end }}"}'
-        hx-swap="none"
-      >{{ if .ReadLater }}あとで読む解除{{ else }}あとで読む{{ end }}</button>
-      <a class="quick-btn" href="{{ .Link }}" target="_blank" rel="noopener noreferrer">元記事</a>
-    </div>
+    {{ template "_overlay_actions.html" . }}
   </header>
   <h1 class="reading-title">{{ .Title }}</h1>
   <div class="reading-meta">
