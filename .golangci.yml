@@ -1,0 +1,48 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - revive
+    - gosec
+    # リソースとメモリのリーク検出系
+    - bodyclose      # net/http response.Body.Close漏れ
+    - noctx          # context無しのnet/httpリクエスト
+    - contextcheck   # 受け取ったcontextが下流に伝播されているか
+    - prealloc
+    - copyloopvar
+    - misspell
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    gosec:
+      excludes:
+        - G104   # errcheckで別途検出する
+        - G304   # 動的パス読み取りはdataディレクトリ配下に限定して防御する
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Writer).Write
+        - (*bytes.Buffer).Write
+        - (*strings.Builder).WriteString
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer
+        - hugeParam
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
