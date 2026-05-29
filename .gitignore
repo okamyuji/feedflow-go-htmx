@@ -1,0 +1,25 @@
+# ビルド成果物
+/bin/
+/dist/
+coverage.out
+coverage.html
+
+# 実行時データ(JSON永続化、証明書)
+/data/
+*.pem
+*.key
+*.crt
+
+# ローカル専用設定
+.env
+
+# ブレインストーミングの一時生成物
+/.superpowers/
+
+# NodeとPlaywright
+node_modules/
+/e2e/playwright/playwright-report/
+/e2e/playwright/test-results/
+
+# OSとエディタ
+.DS_Store

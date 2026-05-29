@@ -1,0 +1,12 @@
+# pre-commitとCIは同一のscripts/quality-gate.shを呼ぶ。
+# entryにコロンとスペースを書くとpre-commit 4.xのYAMLパーサが
+# mapping valueと誤認するためscriptsファイル化して呼び出す。
+repos:
+  - repo: local
+    hooks:
+      - id: quality-gate
+        name: quality-gate (gofmt/vet/staticcheck/golangci/govulncheck/test/gitleaks)
+        entry: bash scripts/quality-gate.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
