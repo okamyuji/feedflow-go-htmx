@@ -11,7 +11,7 @@
     hx-get="/app/items/{{ .FeedID }}/{{ .ID }}"
     hx-target="#reading-overlay"
     hx-swap="innerHTML"
-    @click.prevent="openOverlay($event, '{{ .FeedID }}', '{{ .ID }}')"
+    @click.prevent="openOverlay"
   >
     <h3 class="item-title">{{ .Title }}</h3>
     <p class="item-summary">{{ .Summary }}</p>

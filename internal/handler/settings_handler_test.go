@@ -60,6 +60,7 @@ func TestSettingsPageRenders(t *testing.T) {
 	st := &stubSettings{current: domain.DefaultSettings()}
 	h := newSettingsHandler(t, st, &stubOPML{})
 	req := httptest.NewRequest(http.MethodGet, "/app/settings", nil)
+	req.Header.Set("HX-Request", "true")
 	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
 	rec := httptest.NewRecorder()
 

@@ -1,4 +1,6 @@
 // feedflow Alpine.jsコンポーネントです。オーバーレイ開閉とテーマ切替とキーボードショートカットと自動既読を担います。
+// CSPビルドのAlpineで動かすため、テンプレートのインライン式は使わず、ここで登録した
+// プロパティとメソッドだけを参照します。script-srcはselfに限定しunsafe-evalを使いません。
 
 // csrfToken metaタグからCSRFトークンを取得します。
 function csrfToken() {
@@ -19,20 +21,40 @@ async function postAction(url, params) {
   });
 }
 
-// feedflow ルートのAlpineデータを返します。初期テーマを引数で受け取ります。
-function feedflow(initialTheme) {
+// cardActionData クリック起点の要素から所属カードのフィードIDと記事IDを取り出します。
+function cardActionData(target) {
+  const card = target.closest(".item-card");
+  if (!card) {
+    return { feedID: "", itemID: "", card: null };
+  }
   return {
-    theme: initialTheme || "dark",
+    feedID: card.getAttribute("data-feed") || "",
+    itemID: card.getAttribute("data-item") || "",
+    card,
+  };
+}
+
+// registerFeedflow Alpineの初期化時にfeedflowコンポーネントを登録します。
+function registerFeedflow() {
+  window.Alpine.data("feedflow", () => ({
+    theme: "dark",
     overlayOpen: false,
     activeFeed: "",
     activeItem: "",
 
     init() {
       const saved = localStorage.getItem("feedflow-theme");
+      const initial = document.documentElement.getAttribute("data-theme");
       if (saved === "dark" || saved === "light") {
         this.theme = saved;
-        this.applyTheme();
+      } else if (initial === "dark" || initial === "light") {
+        this.theme = initial;
       }
+      this.applyTheme();
+    },
+
+    get themeLabel() {
+      return this.theme === "dark" ? "昼" : "夜";
     },
 
     applyTheme() {
@@ -45,11 +67,11 @@ function feedflow(initialTheme) {
       localStorage.setItem("feedflow-theme", this.theme);
     },
 
-    openOverlay(event, feedID, itemID) {
+    openOverlay(event) {
+      const { feedID, itemID, card } = cardActionData(event.currentTarget);
       this.activeFeed = feedID;
       this.activeItem = itemID;
       this.overlayOpen = true;
-      const card = document.getElementById("item-" + itemID);
       if (card) {
         card.classList.add("is-read");
       }
@@ -121,7 +143,7 @@ function feedflow(initialTheme) {
         event.preventDefault();
       }
     },
-  };
+  }));
 }
 
-window.feedflow = feedflow;
+document.addEventListener("alpine:init", registerFeedflow);

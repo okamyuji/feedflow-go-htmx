@@ -150,3 +150,33 @@ func TestOPMLServiceExportImportRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip import count got %d want 1", count)
 	}
 }
+
+func TestOPMLServiceImportContinuesOnFailure(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	repo := newFakeRepo()
+	fetch := newFakeFetcher()
+	fetch.results["https://a.example/feed"] = port.FetchResult{StatusCode: 200, Body: []byte("<rss></rss>")}
+	parse := fakeParser{parsed: port.ParsedFeed{Format: port.FormatRSS2, Title: "imported"}}
+	deps := newOPMLDeps(repo, fetch, parse, now)
+	sub := service.NewSubscriptionService(deps)
+	svc := service.NewOPMLService(deps, sub)
+
+	opml := `<opml version="2.0"><body>
+	    <outline type="rss" xmlUrl="https://a.example/feed"/>
+	    <outline type="rss" xmlUrl="https://b.example/unreachable"/>
+	    <outline type="rss" xmlUrl="https://c.example/unreachable"/>
+	  </body></opml>`
+
+	count, err := svc.Import(context.Background(), []byte(opml))
+	if err != nil {
+		t.Fatalf("Import は個別フィードの失敗で全体をエラーにせず継続すべきですが error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("imported count got %d want 1 (到達可能な a のみ成功)", count)
+	}
+	feeds, _ := repo.Feeds()
+	if len(feeds) != 1 {
+		t.Fatalf("repo feeds got %d want 1", len(feeds))
+	}
+}

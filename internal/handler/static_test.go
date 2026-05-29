@@ -40,3 +40,29 @@ func TestStaticHandlerNotFound(t *testing.T) {
 		t.Fatalf("status got %d want %d", rec.Code, http.StatusNotFound)
 	}
 }
+
+func TestStaticHandlerETagAnd304(t *testing.T) {
+	t.Parallel()
+	srv := staticHandler()
+
+	req1 := httptest.NewRequest(http.MethodGet, "/static/htmx.min.js", nil)
+	rec1 := httptest.NewRecorder()
+	srv.ServeHTTP(rec1, req1)
+
+	etag := rec1.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("ETag が付与されていません")
+	}
+	if cc := rec1.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("Cache-Control got %q want %q", cc, "no-cache")
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/static/htmx.min.js", nil)
+	req2.Header.Set("If-None-Match", etag)
+	rec2 := httptest.NewRecorder()
+	srv.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusNotModified {
+		t.Fatalf("If-None-Match一致時のstatus got %d want %d", rec2.Code, http.StatusNotModified)
+	}
+}

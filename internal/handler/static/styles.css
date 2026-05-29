@@ -376,22 +376,77 @@ body {
 
 .settings,
 .boards {
-  max-width: 40rem;
+  max-width: 44rem;
+  margin-inline: auto;
+}
+
+.settings-title,
+.boards-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+  color: var(--accent);
+  letter-spacing: 0.01em;
+}
+
+.settings-form {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.settings-form .field {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-form .field:last-of-type {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.settings-form .btn-primary {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+}
+
+.field-input {
+  width: 100%;
+}
+
+select.field-input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 1.1rem) 55%, calc(100% - 0.75rem) 55%;
+  background-size: 0.35rem 0.35rem, 0.35rem 0.35rem;
+  background-repeat: no-repeat;
+  padding-right: var(--space-4);
 }
 
 .opml-actions {
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.opml-title {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text);
 }
 
 .opml-import {
   display: flex;
   gap: var(--space-1);
   align-items: center;
+  flex-wrap: wrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

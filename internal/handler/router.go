@@ -15,6 +15,11 @@ func (h *Handler) healthz(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+// favicon ブラウザのfavicon要求に空応答を返し、ログインや初回セットアップ画面での404を防ぎます。
+func (h *Handler) favicon(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // appPage 2ペインとオーバーレイのアプリ画面を完全描画します。
 func (h *Handler) appPage(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFromContext(r.Context())
@@ -58,6 +63,7 @@ func (h *Handler) Routes() http.Handler {
 
 	// 認証不要の公開ルートです。
 	mux.HandleFunc("GET /healthz", h.healthz)
+	mux.HandleFunc("GET /favicon.ico", h.favicon)
 	mux.Handle("GET /static/", staticHandler())
 	mux.HandleFunc("GET /login", h.loginPage)
 	mux.Handle("POST /login", h.rateLimitLogin(http.HandlerFunc(h.loginSubmit)))

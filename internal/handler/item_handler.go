@@ -3,8 +3,10 @@ package handler
 import (
 	"html/template"
 	"net/http"
+	"strings"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
+	"github.com/okamyuji/feedflow-go-htmx/internal/feed"
 )
 
 // listItemsFor クエリに応じてミュート適用済みの記事群を取得します。feedクエリがあればそのフィード、無ければ全件です。
@@ -21,6 +23,27 @@ func (h *Handler) listItemsFor(r *http.Request) ([]domain.Item, error) {
 	return filtered, nil
 }
 
+// cleanArticleHTML フィード本文からテキストを抽出し、安全な段落HTMLに整形します。
+// golang.org/x/net/htmlでパースした本文テキストを段落ごとにHTMLエスケープして組み立てます。
+// 生のHTMLタグを露出させず、かつXSSを避けます。
+func cleanArticleHTML(raw string) template.HTML {
+	text, err := feed.Extract([]byte(raw))
+	if err != nil || strings.TrimSpace(text) == "" {
+		text = raw
+	}
+	var sb strings.Builder
+	for _, para := range strings.Split(text, "\n\n") {
+		para = strings.TrimSpace(para)
+		if para == "" {
+			continue
+		}
+		sb.WriteString("<p>")
+		sb.WriteString(template.HTMLEscapeString(para))
+		sb.WriteString("</p>")
+	}
+	return template.HTML(sb.String()) //nolint:gosec // 各段落はHTMLEscapeStringでエスケープ済みのため安全です
+}
+
 // itemList 記事一覧の部分テンプレートを描画します。
 func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFromContext(r.Context())
@@ -34,7 +57,11 @@ func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 		views = append(views, toItemView(it))
 	}
 	data := pageData{CSRFToken: sess.CSRFToken, DefaultView: domain.ViewCard, Items: views}
-	h.renderPartial(w, http.StatusOK, "_item_list.html", data)
+	if isHTMX(r) {
+		h.renderPartial(w, http.StatusOK, "_item_list.html", data)
+		return
+	}
+	h.renderShellPage(w, sess, "feedflow", data)
 }
 
 // findItem 指定フィードと記事IDの記事を返します。見つからない場合はokがfalseになります。
@@ -71,7 +98,7 @@ func (h *Handler) itemOverlay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	view := toItemView(it)
-	view.Content = template.HTML(template.HTMLEscapeString(it.Content)) //nolint:gosec // 本文はHTMLEscapeStringでエスケープ済みです
+	view.Content = cleanArticleHTML(it.Content)
 	h.renderPartial(w, http.StatusOK, "_item_overlay.html", view)
 }
 

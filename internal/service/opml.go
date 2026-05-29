@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/port"
 )
@@ -58,15 +59,23 @@ func (s *OPMLService) Import(ctx context.Context, data []byte) (int, error) {
 	}
 	urls := collectFeedURLs(doc.Body.Outlines)
 	count := 0
+	skipped := 0
 	for _, u := range urls {
 		_, err := s.subs.Subscribe(ctx, u, nil)
 		if err != nil {
 			if errors.Is(err, ErrDuplicateFeed) {
 				continue
 			}
-			return count, fmt.Errorf("failed to subscribe %s during opml import: %w", u, err)
+			// 個別フィードの取得やパースの失敗はimport全体を止めず、記録して次へ進みます。
+			// 大量購読では到達不可やフィード形式不正が当然起こりうるためです。
+			skipped++
+			slog.Warn("opml import skipped a feed", "url", u, "error", err)
+			continue
 		}
 		count++
+	}
+	if skipped > 0 {
+		slog.Info("opml import finished with skips", "imported", count, "skipped", skipped)
 	}
 	return count, nil
 }

@@ -21,7 +21,12 @@ func (h *Handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := pageData{CSRFToken: sess.CSRFToken, Settings: settings}
-	h.renderPartial(w, http.StatusOK, "_settings.html", data)
+	if isHTMX(r) {
+		h.renderPartial(w, http.StatusOK, "_settings.html", data)
+		return
+	}
+	data.MainView = "settings"
+	h.renderShellPage(w, sess, "feedflow 設定", data)
 }
 
 // settingsUpdate 設定フォームを受け取り、サービスの検証を経て保存します。不正値は画面にエラーを表示します。

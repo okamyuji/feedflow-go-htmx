@@ -25,6 +25,7 @@ func TestItemListRendersCards(t *testing.T) {
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
 	h := newAppHandler(t, subs, &stubItems{items: sampleItems()})
 	req := httptest.NewRequest(http.MethodGet, "/app/items?feed=f1", nil)
+	req.Header.Set("HX-Request", "true")
 	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
 	rec := httptest.NewRecorder()
 
@@ -125,6 +126,7 @@ func TestItemMarkAll(t *testing.T) {
 	items := &stubItems{items: sampleItems()}
 	h := newAppHandler(t, subs, items)
 	req := httptest.NewRequest(http.MethodPost, "/app/items/markall", nil)
+	req.Header.Set("HX-Request", "true")
 	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
 	rec := httptest.NewRecorder()
 

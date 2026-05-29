@@ -41,6 +41,7 @@ type pageData struct {
 	Filters     []domain.MuteFilter // ミュートフィルタ一覧です
 	Settings    domain.Settings     // 設定画面で編集する設定です
 	Flash       string              // 操作結果の通知メッセージです
+	MainView    string              // フルページ描画時にmain-paneへ出す内容の種別です。空ならitem_list、settingsなら設定画面です
 }
 
 // feedTreeNode 左ペインの購読ツリーの1ノードを表します。
@@ -129,4 +130,36 @@ func (h *Handler) writeTemplate(w http.ResponseWriter, status int, name string, 
 	if _, err := buf.WriteTo(w); err != nil {
 		slog.Error("failed to write rendered template", "template", name, "error", err)
 	}
+}
+
+// isHTMX HTMXのajaxリクエストかどうかをHX-Requestヘッダで判定します。
+func isHTMX(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true"
+}
+
+// renderShellPage 左ペインのツリーを伴うフルページをbase.htmlで描画します。
+// URL直アクセスやリロードや通常リンク遷移でレイアウトが欠落しないようにします。
+// data.MainViewでmain-paneの内容を切り替えます。
+func (h *Handler) renderShellPage(w http.ResponseWriter, sess Session, title string, data pageData) {
+	tree, err := h.buildTree()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	settings, err := h.deps.Settings.Get()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data.Tree = tree
+	data.Title = title
+	data.Username = sess.Username
+	data.Theme = settings.Theme
+	if data.Theme == domain.Theme("") {
+		data.Theme = domain.ThemeDark
+	}
+	if data.DefaultView == domain.ViewMode("") {
+		data.DefaultView = settings.DefaultView
+	}
+	h.renderPage(w, http.StatusOK, data)
 }
