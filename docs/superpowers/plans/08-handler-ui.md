@@ -4,7 +4,7 @@
 
 Goal: Phase4とPhase5とPhase6で用意したサービスと認証のインターフェースを、コンストラクタ注入でハンドラ層に取り込み、ルーティングとミドルウェアとembedテンプレートとHTMXとAlpine.jsを組み合わせて、ログインと初回セットアップと購読管理と記事閲覧とボードと設定とOPMLの全画面をレイアウトB(2ペインとリーディングオーバーレイ)のダークラグジュアリー配色で完成させます。net/http/httptestでハンドラを統合テストします。
 
-Architecture: internal/handlerはinternal/portのサービスインターフェースとinternal/handler内に定義する認証ポートにだけ依存し、具象型に直接依存しません。依存はすべてhandler.New(deps Deps)のコンストラクタ注入で渡します。画面の部分更新はHTMXで行い、共通レイアウトbase.htmlに対しアンダースコア始まりの部分テンプレートをハンドラから直接ExecuteTemplateで返します。リーディングオーバーレイの開閉とテーマ切替とキーボードショートカットとスクロール追従の自動既読はAlpine.jsで扱います。HTMXとAlpine.jsはベンダーした静的ファイルをembedで同梱し、CDNに依存しません。テンプレートと静的資産はembed.FSで単一バイナリに同梱します。CSSはremを基準にした流体レイアウトとし、固定のmax-widthに依存せずブレークポイントで列構成を調整します。記事の公開日時と取得日時はテンプレート関数でJSTに整形します。
+Architecture: internal/handlerはinternal/portのサービスインターフェースとinternal/handler内に定義する認証ポートにだけ依存し、具象型に直接依存しません。依存はすべてhandler.New(deps Deps)のコンストラクタ注入で渡します。画面の部分更新はHTMXで行い、共通レイアウトbase.htmlに対しアンダースコア始まりの部分テンプレートをハンドラから直接ExecuteTemplateで返します。HTMXの部分テンプレートを直接GETやリロードで返すとレイアウトが欠落するため、ハンドラはHX-Requestヘッダで判定し、非HTMXのときはbase.htmlのフルページを返し、HX-Requestのときだけ部分テンプレートを返します。フルページのときはpageData.MainViewでmain-paneへ出す内容を切り替えます。リーディングオーバーレイの開閉とテーマ切替とキーボードショートカットとスクロール追従の自動既読はAlpine.jsで扱います。HTMXとAlpine.jsはベンダーした静的ファイルをembedで同梱し、CDNに依存しません。Alpine.jsはCSPのscript-src selfと標準ビルドが非互換のため、新しいFunctionでunsafe-evalを要求しないCSPビルド(@alpinejs/cspビルド)を採用し、app.jsはAlpine.dataでコンポーネントを登録し、テンプレートはインライン式でなく登録したメソッドとプロパティの参照にします。テンプレートと静的資産はembed.FSで単一バイナリに同梱します。go:embedが同パッケージ相対のため、テンプレートと静的資産はinternal/handler/templatesとinternal/handler/static配下に置き、それぞれをinternal/handler内のソースからembedします。CSSはremを基準にした流体レイアウトとし、固定のmax-widthに依存せずブレークポイントで列構成を調整します。記事の公開日時と取得日時はテンプレート関数でJSTに整形します。
 
 Tech Stack: Goの標準ライブラリ(net/http、html/template、embed、net/http/httptest)、HTMX(ベンダーした静的ファイル)、Alpine.js(ベンダーした静的ファイル)、CSS(remベースの流体レイアウト)。
 
@@ -161,7 +161,7 @@ cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/
 
 Files:
 - Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/render.go`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/templates/base.html`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/templates/base.html`
 - Test: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/render_test.go`
 
 embed.FSからテンプレートを読み込み、JST整形ほかのテンプレート関数を登録します。記事の公開日時と取得日時はAsia/Tokyoに変換して表示します。
@@ -298,6 +298,7 @@ type pageData struct {
 	Filters     []domain.MuteFilter // ミュートフィルタ一覧です
 	Settings    domain.Settings     // 設定画面で編集する設定です
 	Flash       string              // 操作結果の通知メッセージです
+	MainView    string              // フルページ描画時にmain-paneへ出す内容の種別です。空ならitem_list、settingsなら設定画面です
 }
 
 // feedTreeNode 左ペインの購読ツリーの1ノードを表します。
@@ -387,13 +388,45 @@ func (h *Handler) writeTemplate(w http.ResponseWriter, status int, name string, 
 		slog.Error("failed to write rendered template", "template", name, "error", err)
 	}
 }
+
+// isHTMX HTMXのajaxリクエストかどうかをHX-Requestヘッダで判定します。
+func isHTMX(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true"
+}
+
+// renderShellPage 左ペインのツリーを伴うフルページをbase.htmlで描画します。
+// URL直アクセスやリロードや通常リンク遷移でレイアウトが欠落しないようにします。
+// data.MainViewでmain-paneの内容を切り替えます。
+func (h *Handler) renderShellPage(w http.ResponseWriter, sess Session, title string, data pageData) {
+	tree, err := h.buildTree()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	settings, err := h.deps.Settings.Get()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data.Tree = tree
+	data.Title = title
+	data.Username = sess.Username
+	data.Theme = settings.Theme
+	if data.Theme == domain.Theme("") {
+		data.Theme = domain.ThemeDark
+	}
+	if data.DefaultView == domain.ViewMode("") {
+		data.DefaultView = settings.DefaultView
+	}
+	h.renderPage(w, http.StatusOK, data)
+}
 ```
 
-補足: `templates/*.html`のグロブはアンダースコア始まりの部分テンプレートも含めて読み込みます。`//go:embed all:templates`はアンダースコア始まりのファイルもembedに含めるための指定です。writeTemplateはまずbytes.Bufferへ描画し、テンプレート実行が成功したときだけステータスとボディを書き出すため、途中失敗で破損HTMLがクライアントへ送出されません。書き込みやテンプレート実行の失敗はfmt.Printfではなくslogで構造化記録します。
+補足: `templates/*.html`のグロブはアンダースコア始まりの部分テンプレートも含めて読み込みます。`//go:embed all:templates`はアンダースコア始まりのファイルもembedに含めるための指定です。go:embedは同パッケージ相対のため、このembedはinternal/handler/templates配下を対象にします。writeTemplateはまずbytes.Bufferへ描画し、テンプレート実行が成功したときだけステータスとボディを書き出すため、途中失敗で破損HTMLがクライアントへ送出されません。書き込みやテンプレート実行の失敗はfmt.Printfではなくslogで構造化記録します。`isHTMX`はHX-Requestヘッダで部分更新の要否を判定し、`renderShellPage`は左ペインのツリーと設定を取り込んでbase.htmlのフルページを描画します。各画面ハンドラは`isHTMX`がtrueなら部分テンプレートを返し、falseなら`renderShellPage`でフルページを返します。
 
 - [ ] Step 4: 最小のbase.htmlを作成する
 
-Create `web/templates/base.html`:
+Create `internal/handler/templates/base.html`:
 ```html
 <!doctype html>
 <html lang="ja" data-theme="{{ if isDark .Theme }}dark{{ else }}light{{ end }}">
@@ -403,8 +436,8 @@ Create `web/templates/base.html`:
   <title>{{ .Title }}</title>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/alpine.min.js" defer></script>
   <script src="/static/app.js" defer></script>
+  <script src="/static/alpine.min.js" defer></script>
 </head>
 <body>
   <h1>{{ .Title }}</h1>
@@ -412,7 +445,7 @@ Create `web/templates/base.html`:
 </html>
 ```
 
-補足: このbase.htmlはTask2でParseFSとExecuteTemplateを検証するための最小版です。Task6で2ペインとオーバーレイの完全なレイアウトに置き換えます。
+補足: このbase.htmlはTask2でParseFSとExecuteTemplateを検証するための最小版です。Task6で2ペインとオーバーレイの完全なレイアウトに置き換えます。app.jsはAlpine.dataでコンポーネントを登録するため、alpine.min.jsより前に読み込み、alpine:initで登録が走るようにします。
 
 - [ ] Step 5: テストが通ることを確認する
 
@@ -425,7 +458,7 @@ Expected: 4件すべてPASSします。
 - [ ] Step 6: gofmtを適用してコミットする
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/render.go internal/handler/render_test.go && git add internal/handler/render.go internal/handler/render_test.go web/templates/base.html && git commit -m "feat: embed テンプレートの ParseFS と FuncMap と描画ヘルパを追加する"
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/render.go internal/handler/render_test.go && git add internal/handler/render.go internal/handler/render_test.go internal/handler/templates/base.html && git commit -m "feat: embed テンプレートの ParseFS と FuncMap と描画ヘルパを追加する"
 ```
 
 ---
@@ -433,28 +466,30 @@ cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/
 ## Task 3: 静的ファイルのベンダーとembed配信を実装する
 
 Files:
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/static/htmx.min.js`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/static/alpine.min.js`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/static/htmx.min.js`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/static/alpine.min.js`
 - Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/static.go`
 - Test: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/static_test.go`
 
-HTMXとAlpine.jsはベンダーした静的ファイルをembedで同梱し、CDNに依存しません。静的ファイルは長期キャッシュ可能なヘッダを付けて配信します。
+HTMXとAlpine.jsはベンダーした静的ファイルをembedで同梱し、CDNに依存しません。embedの静的ファイルはhttp.FileServerがETagを付けないため、各ファイルのSHA256をETagにしてCache-Control no-cacheで配信し、内容が変わると再取得され、未変更ならIf-None-Matchで304を返します。これによりデプロイ後の資産更新が確実に反映されます。
 
 - [ ] Step 1: HTMXをベンダーする
 
 Run:
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && curl -sSL -o web/static/htmx.min.js https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js && head -c 80 web/static/htmx.min.js && echo
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && curl -sSL -o internal/handler/static/htmx.min.js https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js && head -c 80 internal/handler/static/htmx.min.js && echo
 ```
 Expected: ファイルが保存され、先頭にHTMXのミニファイ済みJavaScriptが表示されます。`(function(e,t)`のような関数式で始まります。
 
 - [ ] Step 2: Alpine.jsをベンダーする
 
+Alpine.jsの標準ビルドは新しいFunctionでunsafe-evalを要求し、CSPのscript-src selfと非互換のため、unsafe-evalを使わない@alpinejs/cspビルドをベンダーします。
+
 Run:
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && curl -sSL -o web/static/alpine.min.js https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js && head -c 80 web/static/alpine.min.js && echo
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && curl -sSL -o internal/handler/static/alpine.min.js https://unpkg.com/@alpinejs/csp@3.14.8/dist/cdn.min.js && head -c 80 internal/handler/static/alpine.min.js && echo
 ```
-Expected: ファイルが保存され、先頭にAlpine.jsのミニファイ済みJavaScriptが表示されます。
+Expected: ファイルが保存され、先頭にAlpine.jsのCSPビルドのミニファイ済みJavaScriptが表示されます。
 
 - [ ] Step 3: 失敗するテストを書く
 
@@ -482,11 +517,35 @@ func TestStaticHandlerServesHTMX(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); ct == "" {
 		t.Fatalf("Content-Type is empty")
 	}
-	if cc := rec.Header().Get("Cache-Control"); cc == "" {
-		t.Fatalf("Cache-Control is empty")
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("Cache-Control got %q want %q", cc, "no-cache")
+	}
+	if et := rec.Header().Get("ETag"); et == "" {
+		t.Fatalf("ETag is empty")
 	}
 	if rec.Body.Len() == 0 {
 		t.Fatalf("body is empty")
+	}
+}
+
+func TestStaticHandlerReturnsNotModified(t *testing.T) {
+	t.Parallel()
+	srv := staticHandler()
+	first := httptest.NewRequest(http.MethodGet, "/static/htmx.min.js", nil)
+	firstRec := httptest.NewRecorder()
+	srv.ServeHTTP(firstRec, first)
+	etag := firstRec.Header().Get("ETag")
+	if etag == "" {
+		t.Fatalf("ETag is empty on first request")
+	}
+
+	second := httptest.NewRequest(http.MethodGet, "/static/htmx.min.js", nil)
+	second.Header.Set("If-None-Match", etag)
+	secondRec := httptest.NewRecorder()
+	srv.ServeHTTP(secondRec, second)
+
+	if secondRec.Code != http.StatusNotModified {
+		t.Fatalf("status got %d want %d", secondRec.Code, http.StatusNotModified)
 	}
 }
 
@@ -519,7 +578,10 @@ Create `internal/handler/static.go`:
 package handler
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
+	"io"
 	"io/fs"
 	"net/http"
 )
@@ -528,21 +590,55 @@ import (
 var staticFS embed.FS
 
 // staticHandler 埋め込みの静的ファイルを/static配下で配信するハンドラを返します。
-// 静的資産は内容が固定のため長期キャッシュ可能なヘッダを付与します。
+// 各ファイルのコンテンツハッシュをETagに用い、内容が変わると再取得され、
+// 未変更ならIf-None-Matchで304を返します。デプロイ後の資産更新が確実に反映されます。
 func staticHandler() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		// embed対象が存在しないビルド構成は想定外のためpanicで早期に検出します。
 		panic("failed to create static sub fs: " + err.Error())
 	}
+	etags := computeETags(sub)
 	fileServer := http.FileServer(http.FS(sub))
-	return http.StripPrefix("/static/", cacheControl(fileServer))
+	return http.StripPrefix("/static/", cacheControl(etags, fileServer))
 }
 
-// cacheControl 静的ファイルに長期キャッシュのヘッダを付与するミドルウェアです。
-func cacheControl(next http.Handler) http.Handler {
+// computeETags 配信対象の各ファイルのSHA256ハッシュからETag値のマップを作ります。
+// キーはStripPrefix後のリクエストパス(先頭スラッシュなし)に合わせます。
+// 起動時に1度だけ計算します。個別ファイルの読み取り失敗はETagなしで配信を続けます。
+func computeETags(fsys fs.FS) map[string]string {
+	etags := make(map[string]string)
+	_ = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil //nolint:nilerr // 個別の読み取り失敗は致命的でないため配信を継続します
+		}
+		f, openErr := fsys.Open(path)
+		if openErr != nil {
+			return nil
+		}
+		defer func() { _ = f.Close() }()
+		h := sha256.New()
+		if _, copyErr := io.Copy(h, f); copyErr != nil {
+			return nil
+		}
+		etags[path] = `"` + hex.EncodeToString(h.Sum(nil))[:16] + `"`
+		return nil
+	})
+	return etags
+}
+
+// cacheControl ETagによる再検証を行うミドルウェアです。
+// 内容が変わると新しいETagになり再取得され、未変更ならIf-None-Matchで304を返します。
+func cacheControl(etags map[string]string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		if etag, ok := etags[r.URL.Path]; ok {
+			w.Header().Set("ETag", etag)
+			w.Header().Set("Cache-Control", "no-cache")
+			if r.Header.Get("If-None-Match") == etag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -554,12 +650,12 @@ Run:
 ```bash
 cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && go test ./internal/handler/ -run 'TestStatic' -v
 ```
-Expected: 2件すべてPASSします。
+Expected: 3件すべてPASSします。
 
 - [ ] Step 7: gofmtを適用してコミットする
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/static.go internal/handler/static_test.go && git add internal/handler/static.go internal/handler/static_test.go web/static/htmx.min.js web/static/alpine.min.js && git commit -m "feat: HTMX と Alpine.js をベンダーし embed で配信する"
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/static.go internal/handler/static_test.go && git add internal/handler/static.go internal/handler/static_test.go internal/handler/static/htmx.min.js internal/handler/static/alpine.min.js && git commit -m "feat: HTMX と Alpine.js をベンダーし embed で配信する"
 ```
 
 ---
@@ -780,6 +876,7 @@ const hstsValue = "max-age=31536000; includeSubDomains; preload"
 
 // contentSecurityPolicy feedflowのCSPです。internal/authのcontentSecurityPolicyと文言を一致させ二重定義の不整合を避けます。
 // HTMXとAlpine.jsをベンダーしてselfから配信するためscript-srcはselfに限定します。
+// Alpine.jsは標準ビルドがunsafe-evalを要求しselfと非互換のため、unsafe-evalを使わないCSPビルドを採用してscript-src selfを維持します。
 // Alpine.jsのインライン属性を許すためstyle-srcにunsafe-inlineを含めます。
 // form-action 'self'でフォーム送信先を自オリジンに限定し、注入時の外部送信を防ぎます。
 const contentSecurityPolicy = "default-src 'self'; " +
@@ -929,15 +1026,15 @@ cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/
 
 Files:
 - Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/auth_handler.go`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/templates/login.html`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/templates/setup.html`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/templates/login.html`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/templates/setup.html`
 - Test: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/auth_handler_test.go`
 
 設計書セクション9.3のとおり、user.jsonが未登録のときだけ初回セットアップ画面へ到達でき、登録済みでは無効化します。ログイン成功でセッションを発行し、アプリ画面へリダイレクトします。
 
 - [ ] Step 1: ログインとセットアップのテンプレートを作成する
 
-Create `web/templates/login.html`:
+Create `internal/handler/templates/login.html`:
 ```html
 {{ define "login.html" }}
 <!doctype html>
@@ -969,7 +1066,7 @@ Create `web/templates/login.html`:
 {{ end }}
 ```
 
-Create `web/templates/setup.html`:
+Create `internal/handler/templates/setup.html`:
 ```html
 {{ define "setup.html" }}
 <!doctype html>
@@ -1267,7 +1364,7 @@ Expected: 5件すべてPASSします。
 - [ ] Step 6: gofmtを適用してコミットする
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/auth_handler.go internal/handler/auth_handler_test.go && git add internal/handler/auth_handler.go internal/handler/auth_handler_test.go web/templates/login.html web/templates/setup.html && git commit -m "feat: ログインと初回セットアップのハンドラと画面を追加する"
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/auth_handler.go internal/handler/auth_handler_test.go && git add internal/handler/auth_handler.go internal/handler/auth_handler_test.go internal/handler/templates/login.html internal/handler/templates/setup.html && git commit -m "feat: ログインと初回セットアップのハンドラと画面を追加する"
 ```
 
 ---
@@ -1275,16 +1372,16 @@ cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/
 ## Task 6: 2ペインとオーバーレイのレイアウトと部分テンプレートを作成する
 
 Files:
-- Modify: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/templates/base.html`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/templates/_tree.html`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/templates/_item_list.html`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/templates/_item_overlay.html`
+- Modify: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/templates/base.html`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/templates/_tree.html`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/templates/_item_list.html`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/templates/_item_overlay.html`
 
 レイアウトB(2ペインとリーディングオーバーレイ)の完全なレイアウトに置き換えます。左に購読ツリー、右に記事リストを置き、記事を開くと本文が手前にオーバーレイ表示されます。Alpine.jsでオーバーレイの開閉とテーマ切替とキーボードショートカットを扱います。
 
 - [ ] Step 1: base.htmlを完全なレイアウトに置き換える
 
-Replace `web/templates/base.html` with:
+Replace `internal/handler/templates/base.html` with:
 ```html
 {{ define "base.html" }}
 <!doctype html>
@@ -1293,24 +1390,24 @@ Replace `web/templates/base.html` with:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
+  <link rel="icon" href="data:,">
   <meta name="csrf-token" content="{{ .CSRFToken }}">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/alpine.min.js" defer></script>
   <script src="/static/app.js" defer></script>
+  <script src="/static/alpine.min.js" defer></script>
 </head>
 <body
-  x-data="feedflow({{ if isDark .Theme }}'dark'{{ else }}'light'{{ end }})"
-  x-init="init()"
-  @keydown.window="onKey($event)"
+  x-data="feedflow"
+  @keydown.window="onKey"
   hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
 >
   <div class="app-shell">
     <header class="app-bar">
       <span class="app-brand">feedflow</span>
       <div class="app-actions">
-        <button class="icon-btn" @click="toggleTheme()" aria-label="テーマ切替">
-          <span x-text="theme === 'dark' ? '昼' : '夜'"></span>
+        <button class="icon-btn" @click="toggleTheme" aria-label="テーマ切替">
+          <span x-text="themeLabel"></span>
         </button>
         <a class="icon-btn" href="/app/settings" hx-get="/app/settings" hx-target="#main-pane" hx-push-url="true">設定</a>
         <form method="post" action="/logout" class="inline-form">
@@ -1326,7 +1423,7 @@ Replace `web/templates/base.html` with:
       </aside>
 
       <main class="main-pane" id="main-pane">
-        {{ template "_item_list.html" . }}
+        {{ if eq .MainView "settings" }}{{ template "_settings.html" . }}{{ else }}{{ template "_item_list.html" . }}{{ end }}
       </main>
     </div>
   </div>
@@ -1335,7 +1432,7 @@ Replace `web/templates/base.html` with:
     class="overlay-backdrop"
     x-show="overlayOpen"
     x-transition.opacity
-    @click="closeOverlay()"
+    @click="closeOverlay"
     style="display:none"
   ></div>
   <section
@@ -1343,7 +1440,7 @@ Replace `web/templates/base.html` with:
     id="reading-overlay"
     x-show="overlayOpen"
     x-transition
-    @scroll.debounce.300ms="onOverlayScroll($event)"
+    @scroll.debounce.300ms="onOverlayScroll"
     style="display:none"
   >
     {{ if .ActiveItem }}{{ template "_item_overlay.html" .ActiveItem }}{{ end }}
@@ -1353,9 +1450,11 @@ Replace `web/templates/base.html` with:
 {{ end }}
 ```
 
+補足: Alpine.jsのCSPビルドはインライン式を評価せず、登録済みのメソッドとプロパティの参照だけを許します。そのため`x-data="feedflow"`はコンポーネント名を指すだけにし、初期化はapp.jsのinitで行い、`@keydown.window="onKey"`や`@click="toggleTheme"`や`@click="closeOverlay"`や`@scroll...="onOverlayScroll"`はメソッド名のみを指定し、`$event`や引数を式で渡しません。テーマのラベルは`x-text="themeLabel"`のように算出プロパティを参照し、三項演算のインライン式を書きません。app.jsはalpine.min.jsより前に読み込み、`alpine:init`でfeedflowコンポーネントを登録します。main-paneは`.MainView`が"settings"なら設定画面を、それ以外なら記事一覧をフルページに埋め込みます。
+
 - [ ] Step 2: 購読ツリーの部分テンプレートを作成する
 
-Create `web/templates/_tree.html`:
+Create `internal/handler/templates/_tree.html`:
 ```html
 {{ define "_tree.html" }}
 <nav class="tree" aria-label="購読ツリー">
@@ -1393,7 +1492,7 @@ Create `web/templates/_tree.html`:
 
 - [ ] Step 3: 記事リストの部分テンプレートを作成する
 
-Create `web/templates/_item_list.html`:
+Create `internal/handler/templates/_item_list.html`:
 ```html
 {{ define "_item_list.html" }}
 <div class="item-list" data-view="{{ .DefaultView }}">
@@ -1417,7 +1516,7 @@ Create `web/templates/_item_list.html`:
         hx-get="/app/items/{{ .FeedID }}/{{ .ID }}"
         hx-target="#reading-overlay"
         hx-swap="innerHTML"
-        @click.prevent="openOverlay($event, '{{ .FeedID }}', '{{ .ID }}')"
+        @click.prevent="openOverlay"
       >
         <h3 class="item-title">{{ .Title }}</h3>
         <p class="item-summary">{{ .Summary }}</p>
@@ -1451,12 +1550,12 @@ Create `web/templates/_item_list.html`:
 
 - [ ] Step 4: 記事本文オーバーレイの部分テンプレートを作成する
 
-Create `web/templates/_item_overlay.html`:
+Create `internal/handler/templates/_item_overlay.html`:
 ```html
 {{ define "_item_overlay.html" }}
 <article class="reading-article" data-feed="{{ .FeedID }}" data-item="{{ .ID }}">
   <header class="reading-head">
-    <button class="icon-btn" @click="closeOverlay()" aria-label="閉じる">閉じる</button>
+    <button class="icon-btn" @click="closeOverlay" aria-label="閉じる">閉じる</button>
     <div class="reading-actions">
       <button
         class="quick-btn"
@@ -1494,7 +1593,7 @@ Expected: 2件ともPASSします。ParseFSが全テンプレートを問題な�
 - [ ] Step 6: コミットする
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && git add web/templates/base.html web/templates/_tree.html web/templates/_item_list.html web/templates/_item_overlay.html && git commit -m "feat: 2ペインとリーディングオーバーレイのレイアウトと部分テンプレートを追加する"
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && git add internal/handler/templates/base.html internal/handler/templates/_tree.html internal/handler/templates/_item_list.html internal/handler/templates/_item_overlay.html && git commit -m "feat: 2ペインとリーディングオーバーレイのレイアウトと部分テンプレートを追加する"
 ```
 
 ---
@@ -2001,8 +2100,10 @@ package handler
 import (
 	"html/template"
 	"net/http"
+	"strings"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
+	"github.com/okamyuji/feedflow-go-htmx/internal/feed"
 )
 
 // listItemsFor クエリに応じてミュート適用済みの記事群を取得します。feedクエリがあればそのフィード、無ければ全件です。
@@ -2019,6 +2120,27 @@ func (h *Handler) listItemsFor(r *http.Request) ([]domain.Item, error) {
 	return filtered, nil
 }
 
+// cleanArticleHTML フィード本文からテキストを抽出し、安全な段落HTMLに整形します。
+// golang.org/x/net/htmlでパースした本文テキストを段落ごとにHTMLエスケープして組み立てます。
+// 生のHTMLタグを露出させず、かつXSSを避けます。
+func cleanArticleHTML(raw string) template.HTML {
+	text, err := feed.Extract([]byte(raw))
+	if err != nil || strings.TrimSpace(text) == "" {
+		text = raw
+	}
+	var sb strings.Builder
+	for _, para := range strings.Split(text, "\n\n") {
+		para = strings.TrimSpace(para)
+		if para == "" {
+			continue
+		}
+		sb.WriteString("<p>")
+		sb.WriteString(template.HTMLEscapeString(para))
+		sb.WriteString("</p>")
+	}
+	return template.HTML(sb.String()) //nolint:gosec // 各段落はHTMLEscapeStringでエスケープ済みのため安全です
+}
+
 // itemList 記事一覧の部分テンプレートを描画します。
 func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFromContext(r.Context())
@@ -2032,7 +2154,11 @@ func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 		views = append(views, toItemView(it))
 	}
 	data := pageData{CSRFToken: sess.CSRFToken, DefaultView: domain.ViewCard, Items: views}
-	h.renderPartial(w, http.StatusOK, "_item_list.html", data)
+	if isHTMX(r) {
+		h.renderPartial(w, http.StatusOK, "_item_list.html", data)
+		return
+	}
+	h.renderShellPage(w, sess, "feedflow", data)
 }
 
 // findItem 指定フィードと記事IDの記事を返します。見つからない場合はokがfalseになります。
@@ -2069,7 +2195,7 @@ func (h *Handler) itemOverlay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	view := toItemView(it)
-	view.Content = template.HTML(template.HTMLEscapeString(it.Content)) //nolint:gosec // 本文はHTMLEscapeStringでエスケープ済みです
+	view.Content = cleanArticleHTML(it.Content)
 	h.renderPartial(w, http.StatusOK, "_item_overlay.html", view)
 }
 
@@ -2134,11 +2260,11 @@ func (h *Handler) itemMarkAll(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-補足: `renderCard`は単一カード用の部分テンプレート`_item_card.html`を参照します。これは次のStepで`_item_list.html`から1カード分を切り出して作成します。`itemOverlay`はゼロ値のIDなどに依存せず、`findItem`の探索結果に基づいて404を返します。`renderCard`は操作後に`findItem`で最新の記事を再取得してから描画するため、サービスが状態を更新していればその最新状態が反映されます。
+補足: `renderCard`は単一カード用の部分テンプレート`_item_card.html`を参照します。これは次のStepで`_item_list.html`から1カード分を切り出して作成します。`itemOverlay`はゼロ値のIDなどに依存せず、`findItem`の探索結果に基づいて404を返します。`renderCard`は操作後に`findItem`で最新の記事を再取得してから描画するため、サービスが状態を更新していればその最新状態が反映されます。`itemList`はHX-Requestヘッダで判定し、HTMXのときだけ`_item_list.html`の部分テンプレートを返し、URL直アクセスやリロードのときは`renderShellPage`でbase.htmlのフルページを返します。記事本文は生HTMLをそのままエスケープすると生タグが文字列として露出するため、`cleanArticleHTML`が`feed.Extract`でテキストを抽出し、段落ごとにHTMLエスケープした段落HTMLへ整形してから描画します。
 
 - [ ] Step 4: 単一カードの部分テンプレートを作成する
 
-Create `web/templates/_item_card.html`:
+Create `internal/handler/templates/_item_card.html`:
 ```html
 {{ define "_item_card.html" }}
 <li
@@ -2153,7 +2279,7 @@ Create `web/templates/_item_card.html`:
     hx-get="/app/items/{{ .FeedID }}/{{ .ID }}"
     hx-target="#reading-overlay"
     hx-swap="innerHTML"
-    @click.prevent="openOverlay($event, '{{ .FeedID }}', '{{ .ID }}')"
+    @click.prevent="openOverlay"
   >
     <h3 class="item-title">{{ .Title }}</h3>
     <p class="item-summary">{{ .Summary }}</p>
@@ -2193,7 +2319,7 @@ Expected: 6件すべてPASSします。
 - [ ] Step 6: gofmtを適用してコミットする
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/item_handler.go internal/handler/item_handler_test.go && git add internal/handler/item_handler.go internal/handler/item_handler_test.go web/templates/_item_card.html && git commit -m "feat: 記事一覧と本文オーバーレイと既読とスター操作のハンドラを追加する"
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/item_handler.go internal/handler/item_handler_test.go && git add internal/handler/item_handler.go internal/handler/item_handler_test.go internal/handler/templates/_item_card.html && git commit -m "feat: 記事一覧と本文オーバーレイと既読とスター操作のハンドラを追加する"
 ```
 
 ---
@@ -2202,14 +2328,14 @@ cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/
 
 Files:
 - Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/board_handler.go`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/templates/_boards.html`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/templates/_boards.html`
 - Test: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/board_handler_test.go`
 
 設計書セクション3.1のボード(テーマ別に記事を保存)を実装します。記事の保存先ボードはport.ItemServiceのSetBoardsで更新します。ボードの一覧と記事へのボード割り当てを扱います。
 
 - [ ] Step 1: ボード一覧の部分テンプレートを作成する
 
-Create `web/templates/_boards.html`:
+Create `internal/handler/templates/_boards.html`:
 ```html
 {{ define "_boards.html" }}
 <section class="boards" id="boards">
@@ -2355,7 +2481,7 @@ Expected: PASSします。
 - [ ] Step 6: gofmtを適用してコミットする
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/board_handler.go internal/handler/board_handler_test.go && git add internal/handler/board_handler.go internal/handler/board_handler_test.go web/templates/_boards.html && git commit -m "feat: ボード操作のハンドラと一覧テンプレートを追加する"
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/board_handler.go internal/handler/board_handler_test.go && git add internal/handler/board_handler.go internal/handler/board_handler_test.go internal/handler/templates/_boards.html && git commit -m "feat: ボード操作のハンドラと一覧テンプレートを追加する"
 ```
 
 ---
@@ -2364,14 +2490,14 @@ cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/
 
 Files:
 - Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/settings_handler.go`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/templates/_settings.html`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/templates/_settings.html`
 - Test: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/settings_handler_test.go`
 
 設計書セクション4と3.1のとおり、設定の取得と更新、OPMLのインポートとエクスポートを実装します。設定はport.SettingsService、OPMLはport.OPMLServiceのインターフェース経由で受けます。設定の検証はサービス側のUpdateに委ね、不正値はエラーとして画面に反映します。
 
 - [ ] Step 1: 設定画面の部分テンプレートを作成する
 
-Create `web/templates/_settings.html`:
+Create `internal/handler/templates/_settings.html`:
 ```html
 {{ define "_settings.html" }}
 <section class="settings" id="settings">
@@ -2759,7 +2885,7 @@ func (h *Handler) opmlImport(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-補足: `opmlImport`はio.ReadAllを使わず上限付きの逐次読み込みで過大アップロードを防ぎます。defer内のCloseはオーバービュー1節の共通規約に従いinternal/obsのCloseAndLog経由で記録し、握り潰しと非構造化出力の両方を避けます。OPMLのエクスポート応答への書き込みも同じくobs.WriteAndLogで記録します。obsのCloseAndLogとWriteAndLogはloggerにnilを渡すとslog.Defaultを使うため、handlerはloggerを保持せずにそのまま呼べます。
+補足: `opmlImport`はio.ReadAllを使わず上限付きの逐次読み込みで過大アップロードを防ぎます。defer内のCloseはオーバービュー1節の共通規約に従いinternal/obsのCloseAndLog経由で記録し、握り潰しと非構造化出力の両方を避けます。OPMLのエクスポート応答への書き込みも同じくobs.WriteAndLogで記録します。obsのCloseAndLogとWriteAndLogはloggerにnilを渡すとslog.Defaultを使うため、handlerはloggerを保持せずにそのまま呼べます。`OPML.Import`は個別フィードの取得失敗で全体を中断せず、個別失敗をslog.Warnで記録して継続し、成功件数を返す契約です。handlerはその成功件数を受け取り、何件インポートしたかを画面へ表示します。
 
 - [ ] Step 5: テストが通ることを確認する
 
@@ -2772,7 +2898,7 @@ Expected: 5件すべてPASSします。
 - [ ] Step 6: gofmtを適用してコミットする
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/settings_handler.go internal/handler/settings_handler_test.go && git add internal/handler/settings_handler.go internal/handler/settings_handler_test.go web/templates/_settings.html && git commit -m "feat: 設定とOPMLのハンドラと設定画面テンプレートを追加する"
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/settings_handler.go internal/handler/settings_handler_test.go && git add internal/handler/settings_handler.go internal/handler/settings_handler_test.go internal/handler/templates/_settings.html && git commit -m "feat: 設定とOPMLのハンドラと設定画面テンプレートを追加する"
 ```
 
 ---
@@ -3040,16 +3166,18 @@ cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/handler/
 ## Task 12: Alpine.jsのフロントスクリプトとCSSを実装する
 
 Files:
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/static/app.js`
-- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/web/static/styles.css`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/static/app.js`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/handler/static/styles.css`
 
-リーディングオーバーレイの開閉、テーマ切替、キーボードショートカット(jとkで移動、mで既読、sで保存)、スクロール追従の自動既読をAlpine.jsで実装します。CSSはダークラグジュアリー配色でライトとダーク両対応とし、remベースの流体レイアウトでブレークポイントにより列構成を調整します。
+リーディングオーバーレイの開閉、テーマ切替、キーボードショートカット(jとkで移動、mで既読、sで保存)、スクロール追従の自動既読をAlpine.jsで実装します。Alpine.jsはCSPビルドのため、app.jsはAlpine.dataでfeedflowコンポーネントを登録し、テンプレートからはインライン式でなくメソッドとプロパティの参照だけを使います。これによりscript-src selfのCSP下でunsafe-evalなしで動きます。CSSはダークラグジュアリー配色でライトとダーク両対応とし、remベースの流体レイアウトでブレークポイントにより列構成を調整します。
 
 - [ ] Step 1: app.jsを作成する
 
-Create `web/static/app.js`:
+Create `internal/handler/static/app.js`:
 ```javascript
 // feedflow Alpine.jsコンポーネントです。オーバーレイ開閉とテーマ切替とキーボードショートカットと自動既読を担います。
+// CSPビルドのAlpineで動かすため、テンプレートのインライン式は使わず、ここで登録した
+// プロパティとメソッドだけを参照します。script-srcはselfに限定しunsafe-evalを使いません。
 
 // csrfToken metaタグからCSRFトークンを取得します。
 function csrfToken() {
@@ -3070,20 +3198,40 @@ async function postAction(url, params) {
   });
 }
 
-// feedflow ルートのAlpineデータを返します。初期テーマを引数で受け取ります。
-function feedflow(initialTheme) {
+// cardActionData クリック起点の要素から所属カードのフィードIDと記事IDを取り出します。
+function cardActionData(target) {
+  const card = target.closest(".item-card");
+  if (!card) {
+    return { feedID: "", itemID: "", card: null };
+  }
   return {
-    theme: initialTheme || "dark",
+    feedID: card.getAttribute("data-feed") || "",
+    itemID: card.getAttribute("data-item") || "",
+    card,
+  };
+}
+
+// registerFeedflow Alpineの初期化時にfeedflowコンポーネントを登録します。
+function registerFeedflow() {
+  window.Alpine.data("feedflow", () => ({
+    theme: "dark",
     overlayOpen: false,
     activeFeed: "",
     activeItem: "",
 
     init() {
       const saved = localStorage.getItem("feedflow-theme");
+      const initial = document.documentElement.getAttribute("data-theme");
       if (saved === "dark" || saved === "light") {
         this.theme = saved;
-        this.applyTheme();
+      } else if (initial === "dark" || initial === "light") {
+        this.theme = initial;
       }
+      this.applyTheme();
+    },
+
+    get themeLabel() {
+      return this.theme === "dark" ? "昼" : "夜";
     },
 
     applyTheme() {
@@ -3096,11 +3244,11 @@ function feedflow(initialTheme) {
       localStorage.setItem("feedflow-theme", this.theme);
     },
 
-    openOverlay(event, feedID, itemID) {
+    openOverlay(event) {
+      const { feedID, itemID, card } = cardActionData(event.currentTarget);
       this.activeFeed = feedID;
       this.activeItem = itemID;
       this.overlayOpen = true;
-      const card = document.getElementById("item-" + itemID);
       if (card) {
         card.classList.add("is-read");
       }
@@ -3172,15 +3320,17 @@ function feedflow(initialTheme) {
         event.preventDefault();
       }
     },
-  };
+  }));
 }
 
-window.feedflow = feedflow;
+document.addEventListener("alpine:init", registerFeedflow);
 ```
+
+補足: Alpine.jsのCSPビルドはインライン式を評価しないため、`window.Alpine.data`でコンポーネントを登録し、テンプレートからはここで定義したメソッドとプロパティだけを参照します。`openOverlay`はテンプレートから引数を受け取らず、`event.currentTarget`から所属カードのdata属性を読み取って対象を特定します。テーマのラベルは算出プロパティ`themeLabel`で返します。app.jsはalpine.min.jsより前に読み込み、`alpine:init`で登録が走るようにします。
 
 - [ ] Step 2: styles.cssを作成する
 
-Create `web/static/styles.css`:
+Create `internal/handler/static/styles.css`:
 ```css
 /* feedflow スタイルシートです。ダークラグジュアリー配色でライトとダーク両対応とし、remベースの流体レイアウトを採用します。 */
 
@@ -3596,7 +3746,7 @@ Expected: テンプレート読み込みと静的配信とルーティングの�
 - [ ] Step 4: コミットする
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && git add web/static/app.js web/static/styles.css && git commit -m "feat: Alpine.js のフロントスクリプトとダークラグジュアリーの CSS を追加する"
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && git add internal/handler/static/app.js internal/handler/static/styles.css && git commit -m "feat: Alpine.js のフロントスクリプトとダークラグジュアリーの CSS を追加する"
 ```
 
 ---
@@ -3604,65 +3754,235 @@ cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && git add web/static/app.js 
 ## Task 13: cmd/feedflowへハンドラを結線する
 
 Files:
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/sys/clock.go`
+- Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/sys/idgen.go`
 - Modify: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/cmd/feedflow/main.go`
 
-Phase0の最小サーバを、handler.Routesを使う構成へ更新します。実依存(Phase2のstore、Phase3のfeed、Phase4とPhase5のservice、Phase6のauth)の組み立てはそれぞれのフェーズで確定するため、ここではhandler.Newへ依存を渡してRoutesをサーバに載せる結線だけを行います。依存の具象生成はPhase8のデプロイ前にcmd側で確定済みである前提とし、本Taskではコンパイルが通る形でRoutesを使う骨組みに更新します。
+port.Clockとport.IDGenの本番用の具象実装が設計に欠けていたため、このフェーズで`internal/sys`へ新設します。`SystemClock`がport.Clockを、`RandomIDGen`がport.IDGenを満たし、cmd/feedflow/main.goの`buildApp`関数で各層へ注入します。cmd/feedflow/main.goは`buildApp`関数で全依存を組み立て、ルーティング済みハンドラとバックグラウンドのポーラーを返します。`buildApp`はinternal/sysの`SystemClock`(port.Clock)と`RandomIDGen`(port.IDGen)を生成し、feedのフェッチャとパーサ、Phase4とPhase5のservice、Phase6のauthをそれぞれ生成して各層へ注入します。各層はインターフェース経由で受け取り、具象はこの関数だけが知ります。`run`関数はシグナルを待ってグレースフルシャットダウンを行い、起動時にポーラーをバックグラウンドで走らせます。
 
-- [ ] Step 1: main.goを更新する
+- [ ] Step 1: port.Clockとport.IDGenの具象実装を作成する
+
+Create `internal/sys/clock.go`:
+```go
+// Package sys feedflowの本番用の時刻源とID生成の具象実装を提供します。
+// port.Clockとport.IDGenを満たし、main.goから各層へコンストラクタ注入します。
+// テストではこれらを使わずフェイクを注入するため、この層は薄く保ちます。
+package sys
+
+import "time"
+
+// SystemClock 実時刻を返すport.Clockの実装です。
+type SystemClock struct{}
+
+// Now 現在時刻を返します。
+func (SystemClock) Now() time.Time {
+	return time.Now()
+}
+```
+
+Create `internal/sys/idgen.go`:
+```go
+package sys
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+)
+
+// idBytes 生成するIDの乱数バイト数です。16バイトで128ビットの一意性を確保します。
+const idBytes = 16
+
+// RandomIDGen 暗号論的乱数から一意なIDを生成するport.IDGenの実装です。
+type RandomIDGen struct{}
+
+// NewRandomIDGen RandomIDGenを生成します。
+func NewRandomIDGen() RandomIDGen {
+	return RandomIDGen{}
+}
+
+// NewID 16バイトの乱数を16進文字列にしたIDを返します。
+// crypto/randの読み取りはOSのエントロピー枯渇など致命的な状況でのみ失敗します。
+// port.IDGenはerrorを返さない契約のため、その稀な失敗はpanicで顕在化させ、握り潰しません。
+func (RandomIDGen) NewID() string {
+	b := make([]byte, idBytes)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("sys: failed to read crypto/rand for id: %v", err))
+	}
+	return hex.EncodeToString(b)
+}
+```
+
+- [ ] Step 2: main.goを更新する
 
 Replace `cmd/feedflow/main.go` with:
 ```go
 // Package main feedflowのエントリポイントを提供します。
+// 設定を環境変数から読み、各層の具象を生成してインターフェース経由で注入し、
+// HTTPサーバとバックグラウンドのポーラーを起動します。
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 	"time"
 
+	"github.com/okamyuji/feedflow-go-htmx/internal/auth"
+	"github.com/okamyuji/feedflow-go-htmx/internal/feed"
 	"github.com/okamyuji/feedflow-go-htmx/internal/handler"
+	"github.com/okamyuji/feedflow-go-htmx/internal/poller"
+	"github.com/okamyuji/feedflow-go-htmx/internal/service"
+	"github.com/okamyuji/feedflow-go-htmx/internal/store"
+	"github.com/okamyuji/feedflow-go-htmx/internal/sys"
 )
 
 // version ビルド時に-ldflagsで埋め込むバージョン文字列です。
 var version = "dev"
 
+// sessionCookieName セッションIDを載せるCookie名です。
+const sessionCookieName = "feedflow_session"
+
+// sessionTTL セッションの有効期間です。個人利用のため長めに取ります。
+const sessionTTL = 30 * 24 * time.Hour
+
+// loginBurst ログイン試行で同時に許す回数です。
+const loginBurst = 5
+
+// loginRefill ログイン試行トークンを1個補充する間隔です。
+const loginRefill = time.Minute
+
 func main() {
-	srvHandler, err := buildHandler()
+	if err := run(); err != nil {
+		log.Fatalf("feedflow exited with error: %v", err)
+	}
+}
+
+// run アプリを組み立ててサーバとポーラーを起動し、終了シグナルまで動かします。
+func run() error {
+	addr := envOr("FEEDFLOW_ADDR", ":8080")
+
+	routes, runner, err := buildApp()
 	if err != nil {
-		log.Fatalf("failed to build handler: %v", err)
+		return err
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go runner.Run(ctx)
+
 	srv := &http.Server{
-		Addr:              ":8080",
-		Handler:           srvHandler,
+		Addr:              addr,
+		Handler:           routes,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 
-	log.Printf("feedflow %s listening on %s", version, srv.Addr)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("server stopped: %v", err)
+	errCh := make(chan error, 1)
+	go func() {
+		log.Printf("feedflow %s listening on %s", version, addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("failed to shut down server: %w", err)
+		}
+		return nil
+	case err := <-errCh:
+		return fmt.Errorf("server error: %w", err)
 	}
 }
 
-// buildHandler 依存を組み立ててルーティング済みハンドラを返します。
-// 各依存の具象生成はPhase2からPhase6で確定し、ここでDepsへ注入します。
-// 現時点では結線の骨組みとしてhandler.Newを呼び、Routesを返します。
-func buildHandler() (http.Handler, error) {
-	deps := handler.Deps{}
-	h, err := handler.New(deps)
+// buildApp 設定から全依存を組み立て、ルーティング済みハンドラとポーラーを返します。
+// 各層はインターフェース経由で注入し、具象はこの関数だけが知ります。
+func buildApp() (http.Handler, *poller.Runner, error) {
+	dataDir := envOr("FEEDFLOW_DATA_DIR", "./data")
+	baseURL := envOr("FEEDFLOW_BASE_URL", "")
+	isHTTPS := strings.HasPrefix(baseURL, "https://")
+
+	repo, err := store.New(dataDir)
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("failed to open store at %s: %w", dataDir, err)
 	}
-	return h.Routes(), nil
+
+	clock := sys.SystemClock{}
+	ids := sys.NewRandomIDGen()
+	fetcher := feed.NewHTTPFetcher()
+	parser := feed.NewXMLParser()
+
+	sdeps := service.Deps{Repo: repo, Fetch: fetcher, Parse: parser, Clock: clock, IDs: ids}
+	mute := service.NewMuteService(sdeps)
+	subs := service.NewSubscriptionService(sdeps)
+	items := service.NewItemService(sdeps, mute)
+	retention := service.NewRetentionService(sdeps)
+	opml := service.NewOPMLService(sdeps, subs)
+	settings := service.NewSettingsService(sdeps)
+	pollSvc := poller.NewService(repo, fetcher, parser, clock, ids, mute)
+	runner := poller.NewRunner(pollSvc, repo, clock, poller.DefaultConfig())
+
+	sessions := auth.NewSessionStore(auth.SessionConfig{
+		Clock:      clock,
+		TTL:        sessionTTL,
+		CookieName: sessionCookieName,
+		Secure:     isHTTPS,
+	})
+	csrf := auth.NewCSRFStore()
+	limiter := auth.NewRateLimiter(auth.RateLimitConfig{
+		Clock:       clock,
+		Burst:       loginBurst,
+		RefillEvery: loginRefill,
+	})
+	manager := auth.NewManager(repo, auth.DefaultParams())
+
+	h, err := handler.New(handler.Deps{
+		Subscriptions:     subs,
+		Items:             items,
+		Retention:         retention,
+		Mutes:             mute,
+		OPML:              opml,
+		Settings:          settings,
+		Poll:              pollSvc,
+		Sessions:          sessions,
+		CSRF:              csrf,
+		LoginLimiter:      limiter,
+		Setup:             manager,
+		SessionCookieName: sessionCookieName,
+		IsHTTPS:           isHTTPS,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build handler: %w", err)
+	}
+
+	return h.Routes(), runner, nil
+}
+
+// envOr 環境変数keyの値を返します。未設定や空のときはdefを返します。
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 ```
 
-補足: Phase0の`healthz`関数とそのテストはhandlerパッケージへ移したため、cmd側からは削除します。`cmd/feedflow/main_test.go`はhealthzをcmd側で参照していたため、次のStepで更新します。実依存の具象(store、feed、service、auth)はPhase8(09-deploy.md)のデプロイ計画でcmd側の組み立てを完成させます。その完成版buildHandlerでは次の結線を加えます。第一にinternal/authの`*SessionStore`と`*CSRFStore`と`*Manager`とレートリミッタをそれぞれ`Deps.Sessions`と`Deps.CSRF`と`Deps.Setup`と`Deps.LoginLimiter`へ代入します。第二に`Deps.SessionCookieName`へ`auth.SessionCookieName`を渡し、`NewSessionStore`の`SessionConfig.CookieName`と同じ値にします。第三に`FEEDFLOW_BASE_URL`のスキームがhttpsかどうかを判定し、その値を`Deps.IsHTTPS`と`SessionConfig.Secure`の両方へ同じ判定で渡します。これによりCookieのSecure属性とHSTS付与が同じhttps判定で駆動され、平文の開発時にSecure既定がfalseになり、本番httpsでtrueになります。https判定とSecure付与の具体的な結線手順は09-deploy.mdで確定します。本Taskではnilのままでもコンパイルと起動の骨組みが通ることを確認します。nil依存のままハンドラを叩くとpanicするため、起動の実利用はPhase8で依存を満たしてから行います。
+補足: Phase0の`healthz`関数とそのテストはhandlerパッケージへ移したため、cmd側からは削除します。port.Clockとport.IDGenの具象実装はこのフェーズで`internal/sys`に新設します。`SystemClock`がport.Clockを、`RandomIDGen`がport.IDGenを満たし、`buildApp`がそれぞれを生成して各層へ注入します。Cookieの`SessionConfig.CookieName`は`Deps.SessionCookieName`と同じ`sessionCookieName`定数を使い、`requireAuth`が同じCookie名でセッションIDを読み取れるようにします。`FEEDFLOW_BASE_URL`のスキームがhttpsかどうかを判定し、その`isHTTPS`を`Deps.IsHTTPS`と`SessionConfig.Secure`の両方へ同じ判定で渡します。これによりCookieのSecure属性とHSTS付与が同じhttps判定で駆動され、平文の開発時にSecure既定がfalseになり、本番httpsでtrueになります。
 
-- [ ] Step 2: cmdのテストを更新する
+- [ ] Step 3: cmdのテストを更新する
 
 Replace `cmd/feedflow/main_test.go` with:
 ```go
@@ -3674,15 +3994,20 @@ import (
 	"testing"
 )
 
-func TestBuildHandlerHealthz(t *testing.T) {
-	h, err := buildHandler()
+func TestBuildApp_HealthzOK(t *testing.T) {
+	t.Setenv("FEEDFLOW_DATA_DIR", t.TempDir())
+
+	routes, runner, err := buildApp()
 	if err != nil {
-		t.Fatalf("buildHandler returned error: %v", err)
+		t.Fatalf("buildApp returned error: %v", err)
 	}
+	if runner == nil {
+		t.Fatal("buildApp returned nil runner")
+	}
+
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
-
-	h.ServeHTTP(rec, req)
+	routes.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
@@ -3691,22 +4016,56 @@ func TestBuildHandlerHealthz(t *testing.T) {
 		t.Fatalf("body got %q want %q", got, "ok")
 	}
 }
+
+func TestBuildApp_RedirectsToSetupWhenUnregistered(t *testing.T) {
+	t.Setenv("FEEDFLOW_DATA_DIR", t.TempDir())
+
+	routes, _, err := buildApp()
+	if err != nil {
+		t.Fatalf("buildApp returned error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/app", nil)
+	rec := httptest.NewRecorder()
+	routes.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther && rec.Code != http.StatusFound {
+		t.Fatalf("未登録での /app アクセスはリダイレクトを期待しますが got %d でした", rec.Code)
+	}
+}
+
+func TestEnvOr_ReturnsValueWhenSet(t *testing.T) {
+	t.Setenv("FEEDFLOW_TEST_ENVOR", "value")
+	if got := envOr("FEEDFLOW_TEST_ENVOR", "fallback"); got != "value" {
+		t.Fatalf("envOr set got %q want %q", got, "value")
+	}
+}
+
+func TestEnvOr_ReturnsDefaultWhenUnsetOrEmpty(t *testing.T) {
+	if got := envOr("FEEDFLOW_TEST_ENVOR_UNSET", "fallback"); got != "fallback" {
+		t.Fatalf("envOr unset got %q want %q", got, "fallback")
+	}
+	t.Setenv("FEEDFLOW_TEST_ENVOR_EMPTY", "")
+	if got := envOr("FEEDFLOW_TEST_ENVOR_EMPTY", "fallback"); got != "fallback" {
+		t.Fatalf("envOr empty got %q want %q", got, "fallback")
+	}
+}
 ```
 
-補足: /healthzは認証不要かつ依存を使わないため、nil依存でも応答します。これによりcmdの結線がコンパイルと最小動作の両面で正しいことを検証できます。
+補足: `buildApp`は実依存を組み立てるため、テストは`FEEDFLOW_DATA_DIR`へ一時ディレクトリを渡してから呼びます。/healthzは認証不要のため200と`ok`を返し、未登録状態の/appアクセスは初回セットアップへリダイレクトします。これによりcmdの結線が実依存込みで正しいことを検証できます。
 
-- [ ] Step 3: テストが通ることを確認する
+- [ ] Step 4: テストが通ることを確認する
 
 Run:
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && go test ./cmd/feedflow/ -run TestBuildHandlerHealthz -v
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && go test ./cmd/feedflow/ -run 'TestBuildApp|TestEnvOr' -v
 ```
-Expected: PASSします。
+Expected: すべてPASSします。
 
-- [ ] Step 4: gofmtを適用してコミットする
+- [ ] Step 5: gofmtを適用してコミットする
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w cmd/feedflow/main.go cmd/feedflow/main_test.go && git add cmd/feedflow/main.go cmd/feedflow/main_test.go && git commit -m "feat: cmd/feedflow を handler.Routes へ結線する"
+cd /Users/yujiokamoto/devs/golang/feedflow-go-htmx && gofmt -w internal/sys/clock.go internal/sys/idgen.go cmd/feedflow/main.go cmd/feedflow/main_test.go && git add internal/sys/clock.go internal/sys/idgen.go cmd/feedflow/main.go cmd/feedflow/main_test.go && git commit -m "feat: port.Clockとport.IDGenの具象実装を追加しcmd/feedflowへ全依存を結線する"
 ```
 
 ---

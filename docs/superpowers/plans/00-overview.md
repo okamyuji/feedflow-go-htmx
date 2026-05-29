@@ -6,7 +6,7 @@ Goal: Web上で動作する個人専用のRSS Readerを、Goの標準ライブ�
 
 Architecture: クリーンアーキテクチャで各層をinternal/portのインターフェースで疎結合します。全データをメモリ常駐させアトミックJSONで永続化します。フィードはバックグラウンドで定期ポーリングし、HTMXで部分更新します。nginxのmTLSとアプリログインの二層で所有者だけに限定します。
 
-Tech Stack: Go(標準ライブラリ)、golang.org/x/net/html、golang.org/x/crypto、HTMX、Alpine.js、Docker Compose、nginx、Playwright(TypeScript)。
+Tech Stack: Go(標準ライブラリ)、golang.org/x/net/html、golang.org/x/crypto、HTMX、Alpine.js(CSPビルドの@alpinejs/csp)、Docker Compose、nginx、Playwright(TypeScript)。CSPのscript-src selfと両立させるため、unsafe-evalを要求する標準ビルドではなくCSPビルドを採用します。
 
 ---
 
@@ -65,6 +65,9 @@ feedflow-go-htmx/
 │   │   ├── clock.go              Clock
 │   │   ├── idgen.go              IDGen
 │   │   └── service.go            サービスのインターフェース群
+│   ├── sys/                      port.Clockとport.IDGenの本番用具象実装
+│   │   ├── clock.go              SystemClock、実時刻を返すport.Clock実装
+│   │   └── idgen.go              RandomIDGen、crypto/randによるport.IDGen実装
 │   ├── store/                    永続化実装
 │   │   ├── store.go              メモリ常駐の集約、ロードと保存
 │   │   ├── atomic.go             temp+renameのアトミック書き込み
@@ -97,12 +100,12 @@ feedflow-go-htmx/
 │   │   ├── feed_handler.go       購読の追加削除一覧
 │   │   ├── item_handler.go       記事一覧、本文オーバーレイ、既読、スター操作
 │   │   ├── board_handler.go      ボード操作
-│   │   └── settings_handler.go   設定とOPML
+│   │   ├── settings_handler.go   設定とOPML
+│   │   ├── static.go             embed静的資産の配信、SHA256のETagと再検証
+│   │   ├── templates/            base.htmlと_部分テンプレート、render.goが同パッケージ相対でembed
+│   │   └── static/               htmx.min.js、alpine.min.js、styles.css、app.js、static.goが同パッケージ相対でembed
 │   └── obs/
 │       └── obs.go                CloseAndLog、WriteAndLog
-├── web/
-│   ├── templates/                base.htmlと_部分テンプレート
-│   └── static/                   htmx.min.js、alpine.min.js、styles.css、app.js
 ├── data/                         実行時生成、gitignore対象
 ├── deploy/
 │   ├── nginx/                    nginx.conf、mTLS設定

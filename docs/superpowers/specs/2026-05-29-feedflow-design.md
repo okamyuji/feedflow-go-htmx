@@ -108,8 +108,9 @@ Feedly相当の購読と整理の体験を、課金の仕組みなしに自前�
 - internal/pollerはバックグラウンド定期ポーリングを担います
 - internal/handlerはHTTPハンドラでHTMXの部分更新を返します
 - internal/authはscryptパスワード検証とCookieセッションを担います
+- internal/sysは本番用の時刻源とID生成の具象実装を持ちます。SystemClockがport.Clockを、RandomIDGenがport.IDGenを満たします
 - internal/obsはログ付きのCloseとWriteのヘルパを提供します
-- cmd/feedflowはエントリポイントです
+- cmd/feedflowはエントリポイントです。buildApp関数で各層の具象を生成し、internal/sysのSystemClockとRandomIDGenをインターフェース経由で各層へ注入します
 
 ### 5.2 インターフェースによる疎結合とテスタビリティ
 
@@ -168,6 +169,7 @@ data配下にエンティティ別のJSONファイルを置きます。起動時
 - 元記事の全文取得はgolang.org/x/net/htmlで本文要素を抽出する簡易リーダビリティで行います
 - ポーラーはジッタを入れた間隔で巡回し、並行取得数を制限します。手動更新ボタンは対象の1フィードを即時取得します
 - 連続エラーが続くフィードはエラー状態として画面に表示します
+- OPMLインポートは個別フィードの取得やパースの失敗でimport全体を中断しません。失敗した購読はslogで記録して次へ進み、成功した購読件数を返します。大量購読では到達不可やフィード形式不正が当然起こりうるためです
 
 ## 9 認証とセキュリティ
 
@@ -203,9 +205,13 @@ data配下にエンティティ別のJSONファイルを置きます。起動時
 
 ### 10.3 実装方式
 
-- 画面の部分更新はHTMXで行います。共通レイアウトbase.htmlに対し、部分更新用テンプレートをアンダースコア始まりのファイルとして分け、ハンドラから直接ExecuteTemplateで返します
+- 画面の部分更新はHTMXで行います。共通レイアウトbase.htmlに対し、部分更新用テンプレートをアンダースコア始まりのファイルとして分けます
+- HTMXの部分テンプレートを直接GETしたりリロードしたりするとレイアウトが欠落します。ハンドラはHX-Requestヘッダで判定し、非HTMXのリクエストにはbase.htmlのフルページを返します。フルページではpageDataのMainViewでmain-paneの内容を切り替えます。HX-Requestのときだけ部分テンプレートを返します。URL直アクセスやリロードや通常リンク遷移でレイアウトが欠落しないようにします
 - リーディングオーバーレイの開閉、テーマ切替、キーボードショートカット、スクロール追従の自動既読はAlpine.jsで扱います
-- テンプレートと静的資産はembedで単一バイナリに同梱します
+- Alpine.jsはCSPのscript-src selfと標準ビルドが非互換です。標準ビルドはnew Functionでunsafe-evalを要求するためです。@alpinejs/cspビルドを採用します。app.jsはAlpine.dataでコンポーネントを登録し、テンプレートはインライン式でなくそのメソッドとプロパティの参照だけを書きます。これによりunsafe-evalなしで動きます
+- テンプレートと静的資産はembedで単一バイナリに同梱します。go:embedが同パッケージ相対のため、テンプレートはinternal/handler/templatesに、静的資産はinternal/handler/staticに置いてembedします
+- 埋め込み静的資産はhttp.FileServerがETagを付けません。各ファイルのSHA256をETagにしてCache-Control no-cacheで再検証する方式にします。内容が変わると新しいETagになり再取得され、未変更ならIf-None-Matchで304を返します。デプロイ後の資産更新が確実に反映されます
+- 記事本文は生HTMLをそのままエスケープすると生タグが露出します。feed.Extractでテキストを抽出し、段落ごとにHTMLエスケープした段落HTMLへ整形して表示します
 - 記事の公開日時と取得日時はJSTで表示します。テンプレート関数で整形します
 
 ## 11 デプロイ構成
@@ -234,7 +240,9 @@ Playwrightによるe2eを用意し、主要フローを検証します。
 - Goの標準ライブラリ
 - golang.org/x/net/html(本文抽出のみ)
 - golang.org/x/crypto(scryptによるパスワードハッシュのみ)
-- HTMXとAlpine.js(ベンダーした静的ファイルをembedで同梱し、CDNに依存しません)
+- HTMXとAlpine.js(ベンダーした静的ファイルをembedで同梱し、CDNに依存しません)。Alpine.jsはCSPのscript-src selfと両立する@alpinejs/cspビルドを採用します。標準ビルドはunsafe-evalを要求するためです
+
+静的資産のembedはinternal/handler配下に置きます。go:embedが同パッケージ相対のためです。テンプレートはinternal/handler/templates、HTMXとAlpine.jsとstyles.cssはinternal/handler/staticに置きます。
 
 レートリミットは外部依存を増やさず、標準ライブラリで簡易トークンバケットを自前実装します。
 
@@ -242,7 +250,7 @@ Playwrightによるe2eを用意し、主要フローを検証します。
 
 ```
 feedflow-go-htmx/
-├── cmd/feedflow/main.go
+├── cmd/feedflow/main.go(buildAppで全依存を組み立て、グレースフルシャットダウンとバックグラウンドポーラー起動を行う)
 ├── internal/
 │   ├── domain/
 │   ├── port/
@@ -251,11 +259,11 @@ feedflow-go-htmx/
 │   ├── feed/
 │   ├── poller/
 │   ├── handler/
+│   │   ├── templates/(base.html, 部分テンプレート)
+│   │   └── static/(htmx, alpine(cspビルド), app.js, styles.css)
 │   ├── auth/
+│   ├── sys/(SystemClock, RandomIDGen)
 │   └── obs/
-├── web/
-│   ├── templates/
-│   └── static/(htmx, alpine, styles.css)
 ├── data/(実行時生成、gitignore対象)
 ├── deploy/(nginx設定、証明書配置手順)
 ├── e2e/playwright/

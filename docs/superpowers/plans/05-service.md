@@ -2183,7 +2183,7 @@ Files:
 - Create: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/service/opml.go`
 - Test: `/Users/yujiokamoto/devs/golang/feedflow-go-htmx/internal/service/opml_test.go`
 
-設計書セクション3.1のOPMLのインポートとエクスポートを実装します。Importはencoding/xmlでOPMLをパースし、各outlineのxmlUrlをフィードURLとしてSubscribeを呼び、新規購読数を返します。すでに購読済みのURLは重複として数えずスキップします。Exportは現在の購読をOPMLのバイト列として返します。OPMLのXMLマッピングはこのファイル内の非公開型で表します。port.OPMLServiceを満たします。
+設計書セクション3.1のOPMLのインポートとエクスポートを実装します。Importはencoding/xmlでOPMLをパースし、各outlineのxmlUrlをフィードURLとしてSubscribeを呼び、新規購読数を返します。すでに購読済みのURLは重複として数えずスキップします。個別フィードの取得やパースの失敗はimport全体を中断せず、slog.Warnで記録して次のURLへ進み、最終的に成功した新規購読数を返します。Exportは現在の購読をOPMLのバイト列として返します。OPMLのXMLマッピングはこのファイル内の非公開型で表します。port.OPMLServiceを満たします。
 
 - [ ] Step 1: 失敗するテストを書く
 
@@ -2353,7 +2353,7 @@ Expected: コンパイルエラーで失敗します。`undefined: service.OPMLS
 
 - [ ] Step 3: OPMLServiceの最小実装を書く
 
-OPMLServiceは購読追加をSubscriptionServiceに委譲します。重複判定はSubscribeが返すErrDuplicateFeedで識別し、その場合はカウントせずスキップします。outlineは入れ子になりうるため再帰的にxmlUrlを集めます。
+OPMLServiceは購読追加をSubscriptionServiceに委譲します。重複判定はSubscribeが返すErrDuplicateFeedで識別し、その場合はカウントせずスキップします。重複以外の失敗、たとえば到達不可やフィード形式不正は、import全体を中断せずslog.Warnで記録して次のURLへ進みます。大量購読では一部のフィードが失敗するのが当然起こりうるためです。スキップ件数がある場合はslog.Infoで成功件数とスキップ件数をまとめて記録します。outlineは入れ子になりうるため再帰的にxmlUrlを集めます。
 
 Create `internal/service/opml.go`:
 ```go
@@ -2364,16 +2364,17 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/port"
 )
 
 // opmlDocument OPML文書全体のXMLマッピングです。
 type opmlDocument struct {
-	XMLName xml.Name  `xml:"opml"`
-	Version string    `xml:"version,attr"`
-	Head    opmlHead  `xml:"head"`
-	Body    opmlBody  `xml:"body"`
+	XMLName xml.Name `xml:"opml"`
+	Version string   `xml:"version,attr"`
+	Head    opmlHead `xml:"head"`
+	Body    opmlBody `xml:"body"`
 }
 
 // opmlHead OPMLのヘッダ部です。
@@ -2410,6 +2411,7 @@ func NewOPMLService(deps Deps, subs port.SubscriptionService) *OPMLService {
 
 // Import OPMLのバイト列を読み込み、各outlineのxmlUrlを購読に追加します。
 // 新規に購読したフィード数を返します。すでに購読済みのURLはスキップしてカウントしません。
+// 個別フィードの取得やパースの失敗はimport全体を止めず、記録して次のURLへ進みます。
 func (s *OPMLService) Import(ctx context.Context, data []byte) (int, error) {
 	var doc opmlDocument
 	if err := xml.Unmarshal(data, &doc); err != nil {
@@ -2417,15 +2419,23 @@ func (s *OPMLService) Import(ctx context.Context, data []byte) (int, error) {
 	}
 	urls := collectFeedURLs(doc.Body.Outlines)
 	count := 0
+	skipped := 0
 	for _, u := range urls {
 		_, err := s.subs.Subscribe(ctx, u, nil)
 		if err != nil {
 			if errors.Is(err, ErrDuplicateFeed) {
 				continue
 			}
-			return count, fmt.Errorf("failed to subscribe %s during opml import: %w", u, err)
+			// 個別フィードの取得やパースの失敗はimport全体を止めず、記録して次へ進みます。
+			// 大量購読では到達不可やフィード形式不正が当然起こりうるためです。
+			skipped++
+			slog.Warn("opml import skipped a feed", "url", u, "error", err)
+			continue
 		}
 		count++
+	}
+	if skipped > 0 {
+		slog.Info("opml import finished with skips", "imported", count, "skipped", skipped)
 	}
 	return count, nil
 }
