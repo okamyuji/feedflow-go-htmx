@@ -1,11 +1,44 @@
 {{ define "_item_list.html" }}
 <div class="item-list" data-view="{{ .DefaultView }}">
   <div class="item-list-bar">
-    <form method="post" action="/app/items/markall" class="inline-form" hx-post="/app/items/markall" hx-target="#main-pane">
+    {{ if .CurrentLabel }}<h2 class="item-list-title">{{ .CurrentLabel }}</h2>{{ end }}
+    <div class="item-list-actions">
+    {{ if eq .BulkRead "feed" }}
+    <div class="markread">
+      <form class="inline-form" hx-post="/app/items/markall?feed={{ .CurrentFeedID }}" hx-target="#main-pane">
+        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+        <button class="btn-ghost markread-primary" type="submit">このフィードを既読</button>
+      </form>
+      <button
+        class="btn-ghost markread-caret"
+        type="button"
+        aria-label="その他の既読操作"
+        :aria-expanded="markMenuOpen"
+        @click="toggleMarkMenu"
+      >▾</button>
+      <div class="markread-menu" x-show="markMenuOpen" @click.outside="closeMarkMenu" style="display:none">
+        <form
+          class="inline-form"
+          hx-post="/app/items/markall"
+          hx-target="#main-pane"
+          hx-confirm="すべてのフィードを既読にします。よろしいですか。"
+        >
+          <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+          <button class="markread-menu-item" type="submit" @click="closeMarkMenu">すべてのフィードを既読</button>
+        </form>
+      </div>
+    </div>
+    {{ else if eq .BulkRead "all" }}
+    <form class="inline-form" hx-post="/app/items/markall" hx-target="#main-pane">
       <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
-      <button class="btn-ghost" type="submit">全既読</button>
+      <button class="btn-ghost" type="submit">表示中をすべて既読</button>
     </form>
+    {{ end }}
+    </div>
   </div>
+  {{ if not .Items }}
+  <p class="item-empty">表示できる記事はありません。新着が届くとここに並びます。</p>
+  {{ end }}
   <ul class="item-cards">
     {{ range .Items }}
     <li

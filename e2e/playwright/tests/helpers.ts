@@ -1,6 +1,6 @@
-import { createServer, Server } from "node:http";
-import { AddressInfo } from "node:net";
-import { Page, expect } from "@playwright/test";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { type Page, expect } from "@playwright/test";
 
 // USERNAME はE2Eで登録するユーザー名です。
 export const USERNAME = "owner";
@@ -53,8 +53,13 @@ export async function startFeedServer(): Promise<{ url: string; close: () => Pro
 }
 
 // completeSetup は初回セットアップ画面でユーザーを登録します。
+// テストサーバはスイート全体で共有されるため、登録済みなら/setupは/loginへ誘導されます。
+// その場合は登録を飛ばし、初回だけ登録する冪等な実装にします。
 export async function completeSetup(page: Page): Promise<void> {
   await page.goto("/setup");
+  if (!page.url().endsWith("/setup")) {
+    return;
+  }
   await expect(page.locator("form.auth-form")).toBeVisible();
   await page.fill('form.auth-form input[name="username"]', USERNAME);
   await page.fill('form.auth-form input[name="password"]', PASSWORD);

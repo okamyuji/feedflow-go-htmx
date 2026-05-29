@@ -36,12 +36,9 @@ services:
     volumes:
       - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
-      # Let's Encryptの証明書ストアです。certbotが書き込みnginxが読みます。
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      # mTLSのローカルCA証明書です。
-      - /etc/feedflow/mtls:/etc/nginx/mtls:ro
-      # ACME http-01チャレンジ用のwebルートです。
-      - /var/www/certbot:/var/www/certbot:ro
+      # サーバ証明書のストアです。Cloudflare Origin CA証明書をdeployで配置します。
+      # conf.dとtlsの実体はcompose.override.ymlでホストの/etc/feedflowから差し替えます。
+      - /etc/feedflow/tls:/etc/feedflow/tls:ro
     networks:
       - internal
 

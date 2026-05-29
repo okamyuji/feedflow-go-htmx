@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -103,7 +104,10 @@ func buildApp() (http.Handler, *poller.Runner, error) {
 
 	clock := sys.SystemClock{}
 	ids := sys.NewRandomIDGen()
-	fetcher := feed.NewHTTPFetcher()
+	// 既定ではSSRF対策でプライベートやループバック宛の取得を拒否します。
+	// ローカルのE2Eはループバックのテスト用フィードサーバを使うため、FEEDFLOW_ALLOW_PRIVATE_FETCHで許可します。
+	allowPrivateFetch := envOr("FEEDFLOW_ALLOW_PRIVATE_FETCH", "") != ""
+	fetcher := feed.NewHTTPFetcher(feed.WithAllowPrivateAddresses(allowPrivateFetch))
 	parser := feed.NewXMLParser()
 
 	sdeps := service.Deps{Repo: repo, Fetch: fetcher, Parse: parser, Clock: clock, IDs: ids}
@@ -123,9 +127,11 @@ func buildApp() (http.Handler, *poller.Runner, error) {
 		Secure:     isHTTPS,
 	})
 	csrf := auth.NewCSRFStore()
+	// ログイン試行のレート制限はenvで上書きできます。E2Eのように短時間で多数ログインする環境では
+	// FEEDFLOW_LOGIN_BURSTを大きくして枯渇を防ぎます。既定は本番向けの控えめな値です。
 	limiter := auth.NewRateLimiter(auth.RateLimitConfig{
 		Clock:       clock,
-		Burst:       loginBurst,
+		Burst:       envIntOr("FEEDFLOW_LOGIN_BURST", loginBurst),
 		RefillEvery: loginRefill,
 	})
 	manager := auth.NewManager(repo, auth.DefaultParams())
@@ -156,6 +162,16 @@ func buildApp() (http.Handler, *poller.Runner, error) {
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+// envIntOr 環境変数keyを正の整数として返します。未設定や空や不正値のときはdefを返します。
+func envIntOr(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
 	}
 	return def
 }

@@ -1,16 +1,20 @@
 package handler
 
 import (
-	"fmt"
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 )
 
 // maxOPMLBytes OPMLインポートの最大バイト数です。過大なアップロードを防ぎます。
 const maxOPMLBytes = 8 << 20
+
+// opmlImportTimeout バックグラウンドで実行するOPMLインポート全体の制限時間です。大量購読の取得に余裕を持たせます。
+const opmlImportTimeout = 30 * time.Minute
 
 // settingsPage 設定画面の部分テンプレートを描画します。
 func (h *Handler) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +30,7 @@ func (h *Handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.MainView = "settings"
-	h.renderShellPage(w, sess, "feedflow 設定", data)
+	h.renderShellPage(w, r, sess, "feedflow 設定", data)
 }
 
 // settingsUpdate 設定フォームを受け取り、サービスの検証を経て保存します。不正値は画面にエラーを表示します。
@@ -52,6 +56,7 @@ func (h *Handler) settingsUpdate(w http.ResponseWriter, r *http.Request) {
 		ReadRetentionDays: retainDays,
 		Theme:             domain.Theme(r.FormValue("theme")),
 		DefaultView:       domain.ViewMode(r.FormValue("default_view")),
+		AutoReadOnScroll:  r.FormValue("auto_read_on_scroll") != "",
 	}
 	if err := h.deps.Settings.Update(settings); err != nil {
 		h.renderSettingsError(w, sess, "設定を保存できませんでした。入力値を確認してください")
@@ -119,12 +124,22 @@ func (h *Handler) opmlImport(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	count, err := h.deps.OPML.Import(r.Context(), data)
-	if err != nil {
-		http.Error(w, "failed to import opml", http.StatusBadRequest)
-		return
-	}
-	page := pageData{CSRFToken: sess.CSRFToken, Flash: fmt.Sprintf("%d件のフィードをインポートしました", count)}
+	// インポートはフィードごとにネットワーク取得を伴うため、件数が多いと1リクエストの処理が
+	// Cloudflareプロキシのタイムアウトを超え504になります。リクエスト由来のコンテキストは応答後に
+	// 打ち切られるため、独立したコンテキストでバックグラウンド実行し、リクエストは即座に返します。
+	// 取得結果は購読ツリーへ順次反映され、画面の再読み込みで確認できます。重複URLはスキップされます。
+	go func(payload []byte) { //nolint:gosec,contextcheck // 取得はリクエスト応答後も継続させるため、意図的にリクエスト由来でない独立したコンテキストを使います
+		ctx, cancel := context.WithTimeout(context.Background(), opmlImportTimeout)
+		defer cancel()
+		count, ierr := h.deps.OPML.Import(ctx, payload)
+		if ierr != nil {
+			slog.Error("opml import failed", "error", ierr)
+			return
+		}
+		slog.Info("opml import finished", "imported", count)
+	}(data)
+
+	page := pageData{CSRFToken: sess.CSRFToken, Flash: "OPMLのインポートを開始しました。フィードの取得はバックグラウンドで進みます。しばらくして画面を再読み込みしてください。"}
 	settings, serr := h.deps.Settings.Get()
 	if serr == nil {
 		page.Settings = settings

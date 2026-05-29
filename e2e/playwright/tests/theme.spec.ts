@@ -33,4 +33,14 @@ test.describe("テーマ切替", () => {
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   });
+
+  test("トグルのラベルは切り替える先のテーマ名を昼夜でなくライトダークで表示する", async ({ page }) => {
+    await setupAndLogin(page);
+    // 既定はダークのため、切り替える先のライトを表示します。
+    await expect(page.locator(THEME_TOGGLE)).toHaveText("ライト");
+    await page.click(THEME_TOGGLE);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    // ライト表示中は切り替える先のダークを表示します。
+    await expect(page.locator(THEME_TOGGLE)).toHaveText("ダーク");
+  });
 });

@@ -1,0 +1,27 @@
+{{ define "_tree_node.html" }}
+<li class="tree-item tree-{{ .Kind }}{{ if .HasError }} tree-error{{ end }}{{ if .Active }} tree-active{{ end }}"{{ if eq .Kind "feed" }} data-label="{{ .Label }}"{{ end }}>
+  <a
+    class="tree-link"
+    {{ if .Active }}aria-current="page"{{ end }}
+    href="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else if eq .Kind "board" }}board={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
+    hx-get="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else if eq .Kind "board" }}board={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
+    hx-target="#main-pane"
+    hx-push-url="true"
+  >
+    <span class="tree-label">{{ .Label }}</span>
+    {{ if gt .UnreadCount 0 }}<span class="tree-badge">{{ .UnreadCount }}</span>{{ end }}
+    {{ if .HasError }}<span class="tree-error-mark" title="取得エラー">!</span>{{ end }}
+  </a>
+  {{ if eq .Kind "feed" }}
+  <button
+    class="tree-unsubscribe"
+    type="button"
+    aria-label="購読を解除"
+    hx-delete="/app/feeds/{{ .ID }}"
+    hx-target="#tree-pane"
+    hx-swap="outerHTML"
+    hx-confirm="このフィードの購読を解除しますか"
+  >×</button>
+  {{ end }}
+</li>
+{{ end }}

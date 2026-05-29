@@ -13,6 +13,7 @@ type Settings struct {
 	ReadRetentionDays int          `json:"read_retention_days"` // 既読の自動削除日数Mです
 	Theme             Theme        `json:"theme"`               // 既定のテーマです
 	DefaultView       ViewMode     `json:"default_view"`        // 既定の表示形式です
+	AutoReadOnScroll  bool         `json:"auto_read_on_scroll"` // オーバーレイを末尾までスクロールしたとき自動で既読にするかどうかです
 }
 
 // DefaultSettings 設計書の既定値で初期化した設定を返します。
@@ -23,6 +24,7 @@ func DefaultSettings() Settings {
 		ReadRetentionDays: DefaultReadRetentionDays,
 		Theme:             ThemeDark,
 		DefaultView:       ViewCard,
+		AutoReadOnScroll:  true,
 	}
 }
 

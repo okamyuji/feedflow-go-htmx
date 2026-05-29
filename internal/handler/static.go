@@ -7,10 +7,33 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"strings"
 )
 
 //go:embed static
 var staticFS embed.FS
+
+// staticVersions 静的資産のコンテンツハッシュです。テンプレートが資産URLへ付けるキャッシュ無効化用の版数に使います。
+// 起動時に1度だけ計算します。内容が変わると版数が変わり、ブラウザもCloudflareエッジも確実に新しい資産を取得します。
+var staticVersions = computeStaticVersions()
+
+// computeStaticVersions 埋め込み静的資産のパスごとに、ETagからクォートを除いた短いハッシュを返します。
+func computeStaticVersions() map[string]string {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string)
+	for path, etag := range computeETags(sub) {
+		out[path] = strings.Trim(etag, `"`)
+	}
+	return out
+}
+
+// staticVersion 指定した静的資産の版数を返します。未知のファイル名では空文字を返します。
+func staticVersion(name string) string {
+	return staticVersions[name]
+}
 
 // staticHandler 埋め込みの静的ファイルを/static配下で配信するハンドラを返します。
 // 各ファイルのコンテンツハッシュをETagに用い、内容が変わると再取得され、

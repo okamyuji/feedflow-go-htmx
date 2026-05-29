@@ -8,6 +8,21 @@ Architecture: internal/handlerはinternal/portのサービスインターフェ�
 
 Tech Stack: Goの標準ライブラリ(net/http、html/template、embed、net/http/httptest)、HTMX(ベンダーした静的ファイル)、Alpine.js(ベンダーした静的ファイル)、CSS(remベースの流体レイアウト)。
 
+## 実装更新メモ(計画後の変更)
+
+本計画の初版以降、実装で次の変更を加えました。以降のタスク本文の一部のコードスニペットは初版のままなので、実装の真実はinternal/handler配下のコードと設計書セクション10を参照してください。
+
+- ルート(/)はハンドラがないと404になるため、GET /{$}でrootIndexを登録し/appへ303リダイレクトします。/appは未認証で/login、オーナー未登録で/setupへ順に流れます
+- すべてと各フィードの一覧は未読のみ表示の主ストリームにし、既読記事はview=readの既読ビューで見ます。feedTreeNodeのKindはallが未読ストリーム、readが既読ビューを表します
+- 一括既読は表示中の範囲とすべてのフィードを分離しました。pageDataにBulkReadとCurrentFeedIDとCurrentFeedTitleを持たせ、bulkReadContextがクエリから範囲を決めます。feedは表示中フィード、allはすべて(未読ストリーム)、noneは既読やスターやあとで読むやカテゴリやボードで非表示です。_item_list.htmlは範囲に応じて主ボタン(このフィードを既読/表示中をすべて既読)と、すべてのフィードを既読のサブメニュー(hx-confirmで確認)を出し分けます
+- サイドバーにフィード絞り込みのテキスト欄を追加しました。_tree.htmlを固定ナビとフィード一覧の2つのul(間に絞り込み欄)へ分け、ノードは_tree_node.htmlへ切り出しました。絞り込みはapp.jsのfeedFilterとapplyFeedFilter/onFeedFilter/clearFeedFilterでクライアントだけで行い、サーバー通信しません
+- OPMLインポートはハンドラでバックグラウンドのgoroutine実行に変更しました。同期実行は大量購読でCloudflareプロキシのタイムアウトを超え504になるためです。リクエストは即座に開始した旨を返し、独立したコンテキストにタイムアウトを付けて取得します
+- テーマ切替のラベルは昼/夜ではなくライト/ダークにしました。ヘッダーのトグルは切り替える先のテーマ名を表示します(ダーク表示中はライト、ライト表示中はダーク)
+- htmxの履歴キャッシュをbase.htmlのmeta htmx-configでhistoryCacheSize 0に無効化し、historyCacheErrorを防ぎます
+- 左ペインの選択中ノードを強調します。feedTreeNodeにActiveを足し、markActiveNodesがリクエストのクエリ(feed/category/board/view)で一致ノードをActiveにし、_tree_node.htmlがtree-activeクラスとaria-currentを付けます。treeDataとappPageとrenderShellPageの各描画経路で適用します
+- 右ペイン左上に選択中の名称を出します。pageDataにCurrentLabelを足し、currentSelectionLabelがフィード名や各ビュー名を返し、_item_list.htmlがitem-list-titleで表示します。item-list-barはitem-list-titleとitem-list-actionsの2要素でspace-between配置にします
+- 静的資産のキャッシュバスティングを追加します。static.goにstaticVersion(SHA256由来の版数)を足し、templateFuncsへ登録し、base.htmlの各script/linkのsrcへ?v=で付けます。ETag+no-cacheだけだとCloudflareエッジやブラウザで古いJSが残るためです
+
 前提:
 - 作業ディレクトリは`/Users/yujiokamoto/devs/golang/feedflow-go-htmx`です
 - Phase4とPhase5でinternal/portの各サービスインターフェース(SubscriptionService、ItemService、RetentionService、MuteService、OPMLService、SettingsService、PollService)の実装が用意済みです
@@ -303,7 +318,7 @@ type pageData struct {
 
 // feedTreeNode 左ペインの購読ツリーの1ノードを表します。
 type feedTreeNode struct {
-	Kind        string // ノード種別です(all、unread、starred、readlater、category、feed、boardのいずれか)
+	Kind        string // ノード種別です(all、read、starred、readlater、category、feed、boardのいずれか)。allは未読ストリーム、readは既読ビューです
 	ID          string // フィードやカテゴリやボードのIDです
 	Label       string // 表示名です
 	UnreadCount int    // 未読件数です
@@ -1497,10 +1512,27 @@ Create `internal/handler/templates/_item_list.html`:
 {{ define "_item_list.html" }}
 <div class="item-list" data-view="{{ .DefaultView }}">
   <div class="item-list-bar">
-    <form method="post" action="/app/items/markall" class="inline-form" hx-post="/app/items/markall" hx-target="#main-pane">
+    {{/* 実装更新: 一括既読は表示中の範囲とすべてのフィードを分離します。BulkReadがfeedなら主ボタンはこのフィードを既読でサブメニューにすべてのフィードを既読(hx-confirm)、allなら表示中をすべて既読、noneなら非表示です。最新の正確なマークアップはinternal/handler/templates/_item_list.htmlを参照してください */}}
+    {{ if eq .BulkRead "feed" }}
+    <div class="markread">
+      <form class="inline-form" hx-post="/app/items/markall?feed={{ .CurrentFeedID }}" hx-target="#main-pane">
+        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+        <button class="btn-ghost markread-primary" type="submit">このフィードを既読</button>
+      </form>
+      <button class="btn-ghost markread-caret" type="button" aria-label="その他の既読操作" :aria-expanded="markMenuOpen" @click="toggleMarkMenu">▾</button>
+      <div class="markread-menu" x-show="markMenuOpen" @click.outside="closeMarkMenu" style="display:none">
+        <form class="inline-form" hx-post="/app/items/markall" hx-target="#main-pane" hx-confirm="すべてのフィードを既読にします。よろしいですか。">
+          <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+          <button class="markread-menu-item" type="submit" @click="closeMarkMenu">すべてのフィードを既読</button>
+        </form>
+      </div>
+    </div>
+    {{ else if eq .BulkRead "all" }}
+    <form class="inline-form" hx-post="/app/items/markall" hx-target="#main-pane">
       <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
-      <button class="btn-ghost" type="submit">全既読</button>
+      <button class="btn-ghost" type="submit">表示中をすべて既読</button>
     </form>
+    {{ end }}
   </div>
   <ul class="item-cards">
     {{ range .Items }}
@@ -3231,7 +3263,7 @@ function registerFeedflow() {
     },
 
     get themeLabel() {
-      return this.theme === "dark" ? "昼" : "夜";
+      return this.theme === "dark" ? "ライト" : "ダーク";
     },
 
     applyTheme() {

@@ -32,19 +32,25 @@ func mustLoadJST() *time.Location {
 
 // pageData base.htmlに渡す画面全体の描画モデルです。
 type pageData struct {
-	Title       string              // ブラウザのタイトルです
-	Theme       domain.Theme        // 適用するテーマです
-	CSRFToken   string              // フォームに埋め込むCSRFトークンです
-	Username    string              // ログイン中のユーザー名です
-	DefaultView domain.ViewMode     // 記事リストの既定表示形式です
-	Tree        []feedTreeNode      // 左ペインの購読ツリーです
-	Items       []itemView          // 右ペインの記事リストです
-	ActiveItem  *itemView           // オーバーレイで開いている記事です
-	Boards      []domain.Board      // ボード一覧です
-	Filters     []domain.MuteFilter // ミュートフィルタ一覧です
-	Settings    domain.Settings     // 設定画面で編集する設定です
-	Flash       string              // 操作結果の通知メッセージです
-	MainView    string              // フルページ描画時にmain-paneへ出す内容の種別です。空ならitem_list、settingsなら設定画面です
+	Title            string              // ブラウザのタイトルです
+	Theme            domain.Theme        // 適用するテーマです
+	CSRFToken        string              // フォームに埋め込むCSRFトークンです
+	Username         string              // ログイン中のユーザー名です
+	DefaultView      domain.ViewMode     // 記事リストの既定表示形式です
+	Tree             []feedTreeNode      // 左ペインの購読ツリーです
+	Items            []itemView          // 右ペインの記事リストです
+	ActiveItem       *itemView           // オーバーレイで開いている記事です
+	Boards           []domain.Board      // ボード一覧です
+	Filters          []domain.MuteFilter // ミュートフィルタ一覧です
+	Settings         domain.Settings     // 設定画面で編集する設定です
+	Flash            string              // 操作結果の通知メッセージです
+	MainView         string              // フルページ描画時にmain-paneへ出す内容の種別です。空ならitem_list、settingsなら設定画面です
+	TreeOOB          bool                // ツリーペインをHTMXのout-of-bandスワップで差し替えるかどうかです
+	AutoReadOnScroll bool                // オーバーレイのスクロール自動既読を有効にするかどうかです
+	BulkRead         string              // 一括既読コントロールの表示範囲です。feedは表示中フィード、allは全フィード、noneは非表示を表します
+	CurrentFeedID    string              // 表示中フィードのIDです。BulkReadがfeedのときに使います
+	CurrentFeedTitle string              // 表示中フィードの名称です。一括既読ボタンのラベルに使います
+	CurrentLabel     string              // 右ペイン左上に出す、選択中の項目名です。すべて、既読、スター、あとで読む、フィード名のいずれかです
 }
 
 // feedTreeNode 左ペインの購読ツリーの1ノードを表します。
@@ -54,6 +60,7 @@ type feedTreeNode struct {
 	Label       string // 表示名です
 	UnreadCount int    // 未読件数です
 	HasError    bool   // フィードがエラー状態かどうかです
+	Active      bool   // 現在選択中のノードかどうかです。選択中は左ペインで強調表示します
 }
 
 // itemView 右ペインとオーバーレイで描画する記事の表示モデルです。
@@ -107,6 +114,7 @@ func templateFuncs() template.FuncMap {
 		"isDark": func(theme domain.Theme) bool {
 			return theme == domain.ThemeDark
 		},
+		"staticVersion": staticVersion,
 	}
 }
 
@@ -128,6 +136,34 @@ func (h *Handler) renderPage(w http.ResponseWriter, status int, data pageData) {
 // renderPartial 指定した部分テンプレートをHTMX向けに描画します。
 func (h *Handler) renderPartial(w http.ResponseWriter, status int, name string, data any) {
 	h.writeTemplate(w, status, name, data)
+}
+
+// renderWithTreeOOB 主たる部分テンプレートに続けて、ツリーペインをHTMXのout-of-bandスワップで差し替える断片を付けて描画します。
+// 既読操作のレスポンスにツリーを同梱して、左ペインの未読数をリアルタイムに更新します。
+func (h *Handler) renderWithTreeOOB(w http.ResponseWriter, r *http.Request, status int, name string, primary any) {
+	var buf bytes.Buffer
+	if err := h.templates.ExecuteTemplate(&buf, name, primary); err != nil {
+		slog.Error("failed to execute template", "template", name, "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	tree, err := h.treeData(r)
+	if err != nil {
+		slog.Error("failed to build tree for oob swap", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	tree.TreeOOB = true
+	if err := h.templates.ExecuteTemplate(&buf, "_tree_pane.html", tree); err != nil {
+		slog.Error("failed to execute template", "template", "_tree_pane.html", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if _, err := buf.WriteTo(w); err != nil {
+		slog.Error("failed to write rendered template with oob tree", "template", name, "error", err)
+	}
 }
 
 // writeTemplate テンプレートをバッファ経由で描画し、成功時にだけレスポンスへ書き込みます。
@@ -154,12 +190,13 @@ func isHTMX(r *http.Request) bool {
 // renderShellPage 左ペインのツリーを伴うフルページをbase.htmlで描画します。
 // URL直アクセスやリロードや通常リンク遷移でレイアウトが欠落しないようにします。
 // data.MainViewでmain-paneの内容を切り替えます。
-func (h *Handler) renderShellPage(w http.ResponseWriter, sess Session, title string, data pageData) {
+func (h *Handler) renderShellPage(w http.ResponseWriter, r *http.Request, sess Session, title string, data pageData) {
 	tree, err := h.buildTree()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	tree = markActiveNodes(tree, r)
 	settings, err := h.deps.Settings.Get()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -169,6 +206,7 @@ func (h *Handler) renderShellPage(w http.ResponseWriter, sess Session, title str
 	data.Title = title
 	data.Username = sess.Username
 	data.Theme = settings.Theme
+	data.AutoReadOnScroll = settings.AutoReadOnScroll
 	if data.Theme == domain.Theme("") {
 		data.Theme = domain.ThemeDark
 	}

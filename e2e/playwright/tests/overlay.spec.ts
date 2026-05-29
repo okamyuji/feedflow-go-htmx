@@ -8,7 +8,7 @@ test.describe("本文オーバーレイ表示", () => {
     feed = await startFeedServer();
     await setupAndLogin(page);
     await addFeed(page, feed.url);
-    await page.click('#tree-pane a.tree-link:has-text("E2E Sample Feed")');
+    await page.locator('#tree-pane a.tree-link', { hasText: "E2E Sample Feed" }).last().click();
     await expect(page.locator(".item-list li.item-card")).toHaveCount(2);
   });
 

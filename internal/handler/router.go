@@ -20,6 +20,11 @@ func (h *Handler) favicon(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// rootIndex ルートパスへのアクセスをアプリ画面へ誘導します。未認証なら/loginへ、オーナー未登録なら/setupへ順に転送されます。
+func (h *Handler) rootIndex(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/app", http.StatusSeeOther)
+}
+
 // appPage 2ペインとオーバーレイのアプリ画面を完全描画します。
 func (h *Handler) appPage(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFromContext(r.Context())
@@ -42,14 +47,20 @@ func (h *Handler) appPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	scope, feedID, feedTitle := h.bulkReadContext(r)
 	data := pageData{
-		Title:       "feedflow",
-		Theme:       settings.Theme,
-		CSRFToken:   sess.CSRFToken,
-		Username:    sess.Username,
-		DefaultView: settings.DefaultView,
-		Tree:        tree,
-		Items:       views,
+		Title:            "feedflow",
+		Theme:            settings.Theme,
+		CSRFToken:        sess.CSRFToken,
+		Username:         sess.Username,
+		DefaultView:      settings.DefaultView,
+		Tree:             markActiveNodes(tree, r),
+		Items:            views,
+		AutoReadOnScroll: settings.AutoReadOnScroll,
+		BulkRead:         scope,
+		CurrentFeedID:    feedID,
+		CurrentFeedTitle: feedTitle,
+		CurrentLabel:     h.currentSelectionLabel(r),
 	}
 	if data.Theme == domain.Theme("") {
 		data.Theme = domain.ThemeDark
@@ -62,6 +73,7 @@ func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// 認証不要の公開ルートです。
+	mux.HandleFunc("GET /{$}", h.rootIndex)
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /favicon.ico", h.favicon)
 	mux.Handle("GET /static/", staticHandler())

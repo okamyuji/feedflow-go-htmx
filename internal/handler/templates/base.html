@@ -7,15 +7,18 @@
   <title>{{ .Title }}</title>
   <link rel="icon" href="data:,">
   <meta name="csrf-token" content="{{ .CSRFToken }}">
-  <link rel="stylesheet" href="/static/styles.css">
-  <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/app.js" defer></script>
-  <script src="/static/alpine.min.js" defer></script>
+  <!-- htmxの履歴キャッシュを無効化しますlocalStorageへのスナップショット保存失敗(historyCacheError)を防ぎます。戻る操作はサーバーから再取得します -->
+  <meta name="htmx-config" content='{"historyCacheSize":0}'>
+  <link rel="stylesheet" href="/static/styles.css?v={{ staticVersion "styles.css" }}">
+  <script src="/static/htmx.min.js?v={{ staticVersion "htmx.min.js" }}" defer></script>
+  <script src="/static/app.js?v={{ staticVersion "app.js" }}" defer></script>
+  <script src="/static/alpine.min.js?v={{ staticVersion "alpine.min.js" }}" defer></script>
 </head>
 <body
   x-data="feedflow"
   @keydown.window="onKey"
   hx-headers='{"X-CSRF-Token": "{{ .CSRFToken }}"}'
+  data-auto-read="{{ if .AutoReadOnScroll }}true{{ else }}false{{ end }}"
 >
   <div class="app-shell">
     <header class="app-bar">
@@ -36,11 +39,13 @@
     </header>
 
     <div class="app-body" :class="sidebarClass">
-      <aside class="tree-pane" id="tree-pane">
-        {{ template "_tree.html" . }}
-      </aside>
+      {{ template "_tree_pane.html" . }}
 
-      <main class="main-pane" id="main-pane">
+      <main
+        class="main-pane"
+        id="main-pane"
+        @scroll.debounce.200ms="onListScroll"
+      >
         {{ if eq .MainView "settings" }}{{ template "_settings.html" . }}{{ else }}{{ template "_item_list.html" . }}{{ end }}
       </main>
     </div>

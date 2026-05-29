@@ -1,5 +1,5 @@
 # Terraform本体とプロバイダのバージョン制約をまとめます。
-# applyは実行せずfmtとinitとvalidateだけを通す前提です。
+# AWSとCloudflareの両方をterraformで管理します。
 
 terraform {
   required_version = ">= 1.6.0"
@@ -8,6 +8,10 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.60"
+    }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 4.40"
     }
     tls = {
       source  = "hashicorp/tls"
@@ -34,4 +38,11 @@ terraform {
 
 provider "aws" {
   region = var.region
+}
+
+# CloudflareプロバイダですDNSとゾーン設定とAccessとOrigin CA証明書の発行をすべてAPIトークンで
+# 操作します。プロバイダv3.32.0以降はOrigin CA証明書もトークンで発行できるためOrigin CA Keyは
+# 使いません。トークンにはSSL and Certificatesの編集権限を含めます。
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
 }

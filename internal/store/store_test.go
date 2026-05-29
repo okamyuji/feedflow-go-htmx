@@ -520,6 +520,35 @@ func TestSaveAndGetSettings(t *testing.T) {
 	}
 }
 
+func TestLoadSettingsDefaultsAutoReadWhenKeyMissing(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "data")
+	if err := os.MkdirAll(filepath.Join(root, "items"), 0o700); err != nil {
+		t.Fatalf("mkdir returned error: %v", err)
+	}
+	// auto_read_on_scrollキーを持たない既存形式のsettings.jsonを用意します。
+	legacy := `{"poll_interval":"1h","max_items":500,"read_retention_days":60,"theme":"light","default_view":"magazine"}`
+	if err := os.WriteFile(filepath.Join(root, "settings.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatalf("write settings.json returned error: %v", err)
+	}
+
+	s, err := store.New(root)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	got, err := s.Settings()
+	if err != nil {
+		t.Fatalf("Settings returned error: %v", err)
+	}
+	if !got.AutoReadOnScroll {
+		t.Fatalf("AutoReadOnScroll got %v want true for legacy settings without the key", got.AutoReadOnScroll)
+	}
+	if got.MaxItems != 500 || got.Theme != domain.ThemeLight {
+		t.Fatalf("existing keys not preserved: got %+v", got)
+	}
+}
+
 func TestSaveAndGetUser(t *testing.T) {
 	t.Parallel()
 

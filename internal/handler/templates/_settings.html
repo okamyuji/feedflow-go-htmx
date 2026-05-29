@@ -43,6 +43,10 @@
         <option value="article"{{ if eq (printf "%s" .Settings.DefaultView) "article" }} selected{{ end }}>記事ビュー</option>
       </select>
     </label>
+    <label class="field field-checkbox">
+      <input type="checkbox" name="auto_read_on_scroll" value="true"{{ if .Settings.AutoReadOnScroll }} checked{{ end }}>
+      <span class="field-label">スクロールで自動既読</span>
+    </label>
     <button class="btn-primary" type="submit">保存する</button>
   </form>
 
