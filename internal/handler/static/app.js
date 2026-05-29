@@ -41,6 +41,7 @@ function registerFeedflow() {
     overlayOpen: false,
     activeFeed: "",
     activeItem: "",
+    sidebarOpen: true,
 
     init() {
       const saved = localStorage.getItem("feedflow-theme");
@@ -51,10 +52,23 @@ function registerFeedflow() {
         this.theme = initial;
       }
       this.applyTheme();
+      const sidebar = localStorage.getItem("feedflow-sidebar");
+      if (sidebar === "closed") {
+        this.sidebarOpen = false;
+      }
     },
 
     get themeLabel() {
       return this.theme === "dark" ? "昼" : "夜";
+    },
+
+    get sidebarClass() {
+      return this.sidebarOpen ? "" : "sidebar-collapsed";
+    },
+
+    toggleSidebar() {
+      this.sidebarOpen = !this.sidebarOpen;
+      localStorage.setItem("feedflow-sidebar", this.sidebarOpen ? "open" : "closed");
     },
 
     applyTheme() {

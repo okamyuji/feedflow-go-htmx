@@ -70,6 +70,12 @@ body {
   color: var(--accent);
 }
 
+.app-bar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .app-actions {
   display: flex;
   gap: var(--space-1);
@@ -85,6 +91,14 @@ body {
   grid-template-columns: 1fr;
   flex: 1;
   min-height: 0;
+}
+
+.app-body.sidebar-collapsed {
+  grid-template-columns: 1fr;
+}
+
+.app-body.sidebar-collapsed .tree-pane {
+  display: none;
 }
 
 @media (min-width: 48rem) {
@@ -152,6 +166,8 @@ body {
 .main-pane {
   padding: var(--space-3);
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
 }
 
 .item-list-bar {
@@ -179,6 +195,7 @@ body {
   border-radius: var(--radius);
   padding: var(--space-2);
   background: var(--surface);
+  overflow-wrap: anywhere;
   transition: transform var(--duration) var(--ease), border-color var(--duration) var(--ease);
 }
 

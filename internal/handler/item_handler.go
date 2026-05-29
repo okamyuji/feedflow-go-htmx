@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"html/template"
 	"net/http"
 	"strings"
@@ -9,18 +10,78 @@ import (
 	"github.com/okamyuji/feedflow-go-htmx/internal/feed"
 )
 
-// listItemsFor クエリに応じてミュート適用済みの記事群を取得します。feedクエリがあればそのフィード、無ければ全件です。
+// listItemsFor クエリに応じてミュート適用済みの記事群を取得します。
+// feedで単一フィード、categoryでカテゴリ所属フィード、boardでボード保存記事に絞り、
+// view(unread、starred、readlater)で状態を絞ります。いずれも無指定なら全件です。
 func (h *Handler) listItemsFor(r *http.Request) ([]domain.Item, error) {
-	feedID := r.URL.Query().Get("feed")
-	items, err := h.deps.Items.ListItems(feedID)
+	q := r.URL.Query()
+	items, err := h.deps.Items.ListItems(q.Get("feed"))
 	if err != nil {
 		return nil, err
 	}
+
+	switch q.Get("view") {
+	case "unread":
+		items = keepItems(items, func(it domain.Item) bool { return !it.Read })
+	case "starred":
+		items = keepItems(items, func(it domain.Item) bool { return it.Starred })
+	case "readlater":
+		items = keepItems(items, func(it domain.Item) bool { return it.ReadLater })
+	}
+
+	if boardID := q.Get("board"); boardID != "" {
+		items = keepItems(items, func(it domain.Item) bool { return containsString(it.BoardIDs, boardID) })
+	}
+
+	if categoryID := q.Get("category"); categoryID != "" {
+		feedIDs, ferr := h.feedIDsInCategory(categoryID)
+		if ferr != nil {
+			return nil, ferr
+		}
+		items = keepItems(items, func(it domain.Item) bool { return containsString(feedIDs, it.FeedID) })
+	}
+
 	filtered, err := h.deps.Mutes.Filter(items)
 	if err != nil {
 		return nil, err
 	}
 	return filtered, nil
+}
+
+// keepItems 述語を満たす記事だけを順序を保って残します。
+func keepItems(items []domain.Item, keep func(domain.Item) bool) []domain.Item {
+	out := make([]domain.Item, 0, len(items))
+	for _, it := range items {
+		if keep(it) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// containsString 文字列スライスに対象値が含まれるかどうかを返します。
+func containsString(values []string, target string) bool {
+	for _, v := range values {
+		if v == target {
+			return true
+		}
+	}
+	return false
+}
+
+// feedIDsInCategory 指定カテゴリに所属するフィードのID群を返します。
+func (h *Handler) feedIDsInCategory(categoryID string) ([]string, error) {
+	feeds, err := h.deps.Subscriptions.ListFeeds()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load feeds for category filter: %w", err)
+	}
+	ids := make([]string, 0, len(feeds))
+	for _, f := range feeds {
+		if containsString(f.CategoryIDs, categoryID) {
+			ids = append(ids, f.ID)
+		}
+	}
+	return ids, nil
 }
 
 // cleanArticleHTML フィード本文からテキストを抽出し、安全な段落HTMLに整形します。

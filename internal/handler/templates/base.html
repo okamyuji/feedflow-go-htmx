@@ -19,7 +19,10 @@
 >
   <div class="app-shell">
     <header class="app-bar">
-      <span class="app-brand">feedflow</span>
+      <div class="app-bar-left">
+        <button class="icon-btn" @click="toggleSidebar" aria-label="サイドバー切替">☰</button>
+        <span class="app-brand">feedflow</span>
+      </div>
       <div class="app-actions">
         <button class="icon-btn" @click="toggleTheme" aria-label="テーマ切替">
           <span x-text="themeLabel"></span>
@@ -32,7 +35,7 @@
       </div>
     </header>
 
-    <div class="app-body">
+    <div class="app-body" :class="sidebarClass">
       <aside class="tree-pane" id="tree-pane">
         {{ template "_tree.html" . }}
       </aside>

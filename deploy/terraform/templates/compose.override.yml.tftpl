@@ -1,0 +1,9 @@
+# 自己署名TLS用のcompose上書きです。元のcompose.ymlは変更しません。
+# 自己署名のconfと証明書を追加マウントしLet's Encrypt前提のマウントを上書きします。
+
+services:
+  nginx:
+    volumes:
+      - /etc/feedflow/conf.d:/etc/nginx/conf.d:ro
+      - /etc/feedflow/tls:/etc/feedflow/tls:ro
+      - /etc/feedflow/mtls:/etc/nginx/mtls:ro

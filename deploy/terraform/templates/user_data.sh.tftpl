@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# 起動時に追加EBSをext4でマウントしfstabへ追記します。
+# 既にファイルシステムがある場合は再フォーマットしません。
+set -euxo pipefail
+
+DATA_DIR="/mnt/feedflow-data"
+mkdir -p "$DATA_DIR"
+
+# 追加EBSのデバイスを特定します。ルート以外でマウントされていないブロックデバイスを選びます。
+find_data_device() {
+  local dev
+  for dev in $(lsblk -dpno NAME,TYPE | awk '$2=="disk"{print $1}'); do
+    # ルートを含むディスクは除外します。
+    if lsblk -no MOUNTPOINT "$dev" | grep -q '^/$'; then
+      continue
+    fi
+    if lsblk -no MOUNTPOINT "$dev" | grep -q '/'; then
+      continue
+    fi
+    echo "$dev"
+    return 0
+  done
+  return 1
+}
+
+# デバイスが見えるまで待ちます。アタッチ直後は遅延する場合があります。
+DATA_DEV=""
+for _ in $(seq 1 30); do
+  if DATA_DEV="$(find_data_device)"; then
+    break
+  fi
+  sleep 2
+done
+
+if [ -z "$DATA_DEV" ]; then
+  echo "data EBS device not found" >&2
+  exit 1
+fi
+
+# 既存ファイルシステムが無い場合だけext4で初期化します。
+if ! blkid "$DATA_DEV" >/dev/null 2>&1; then
+  mkfs -t ext4 "$DATA_DEV"
+fi
+
+# UUIDでfstabへ登録し再起動後もマウントされるようにします。
+DATA_UUID="$(blkid -s UUID -o value "$DATA_DEV")"
+if ! grep -q "$DATA_UUID" /etc/fstab; then
+  echo "UUID=$DATA_UUID $DATA_DIR ext4 defaults,nofail 0 2" >> /etc/fstab
+fi
+
+mount -a
+
+# アプリのデータディレクトリへ書き込めるよう所有権を整えます。
+# distrolessのnonrootはuid65532のため対象のuidへ合わせます。
+chown -R 65532:65532 "$DATA_DIR" || true

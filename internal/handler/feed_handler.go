@@ -115,7 +115,7 @@ func toItemView(it domain.Item) itemView {
 		FeedID:      it.FeedID,
 		Title:       it.Title,
 		Link:        it.Link,
-		Summary:     truncateRunes(it.Summary, 160),
+		Summary:     truncateRunes(stripHTML(it.Summary), 160),
 		Author:      it.Author,
 		PublishedAt: formatJST(it.PublishedAt),
 		Read:        it.Read,

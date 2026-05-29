@@ -1,0 +1,29 @@
+# 秘密情報と生成物を追跡対象から外します。
+
+# SSH秘密鍵などのpem
+*.pem
+
+# stateと関連バックアップ
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# 初期化で展開されるプロバイダなど
+.terraform/
+
+# クライアント証明書のp12と取得物
+*.p12
+*.crt
+*.key
+client-certs/
+
+# ローカルで生成するアプリのバンドルや一時生成物
+.terraform-tmp/
+app_bundle.tar.gz
+
+# crashログ
+crash.log
+crash.*.log
+
+# .terraform.lock.hclは追跡対象として残します。
+!.terraform.lock.hcl

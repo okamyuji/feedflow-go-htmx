@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"html"
 	"html/template"
 	"log/slog"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
@@ -83,6 +86,17 @@ func truncateRunes(s string, max int) string {
 		return s
 	}
 	return string(r[:max])
+}
+
+// htmlTagRe HTMLタグにマッチする正規表現です。要約のタグ除去に使います。
+var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
+
+// stripHTML HTMLタグを除去しエンティティを復号して、空白を整理したプレーンテキストを返します。
+// 記事一覧の要約は生HTMLを表示せず読みやすいテキストにします。
+func stripHTML(s string) string {
+	noTags := htmlTagRe.ReplaceAllString(s, " ")
+	text := html.UnescapeString(noTags)
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // templateFuncs テンプレートに登録する関数群を返します。
