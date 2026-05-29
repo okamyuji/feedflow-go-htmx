@@ -1,0 +1,57 @@
+package domain
+
+import "time"
+
+// Item フィードから取得した個々の記事を表します。設計書のセクション6に対応します。
+type Item struct {
+	ID          string    `json:"id"`           // 一意な識別子です
+	FeedID      string    `json:"feed_id"`      // 所属するフィードのIDです
+	GUID        string    `json:"guid"`         // フィード内での記事の一意キーです
+	Title       string    `json:"title"`        // 記事のタイトルです
+	Link        string    `json:"link"`         // 元記事のURLです
+	Content     string    `json:"content"`      // 記事本文です
+	Summary     string    `json:"summary"`      // 記事の要約です
+	Author      string    `json:"author"`       // 著者名です
+	PublishedAt time.Time `json:"published_at"` // 公開日時です
+	FetchedAt   time.Time `json:"fetched_at"`   // 取得日時です
+	Read        bool      `json:"read"`         // 既読フラグです
+	Starred     bool      `json:"starred"`      // スターフラグです
+	ReadLater   bool      `json:"read_later"`   // あとで読むフラグです
+	BoardIDs    []string  `json:"board_ids"`    // 保存先ボードのID群です
+	Tags        []string  `json:"tags"`         // タグ群です
+	Highlights  []string  `json:"highlights"`   // ハイライトした本文断片の群です
+	Note        string    `json:"note"`         // 自由記述のメモです
+}
+
+// HasUserAction 所有者が何らかのアクションを記録した記事かどうかを返します。
+// スター、あとで読む、ボード保存、タグ付け、メモ、ハイライトのいずれかを持つと真になります。
+// 既読は閲覧の結果にすぎないためアクションには含めません。
+func (i Item) HasUserAction() bool {
+	return i.Starred ||
+		i.ReadLater ||
+		len(i.BoardIDs) > 0 ||
+		len(i.Tags) > 0 ||
+		len(i.Highlights) > 0 ||
+		i.Note != ""
+}
+
+// ShouldRetain 保持ポリシーに照らして記事を残すべきかどうかを返します。
+// nowは現在時刻、rankIndexは同一フィード内の新しい順での0始まりの順位、
+// maxItemsはフィードごとの保持件数N、retainDaysは既読の自動削除日数Mです。
+// アクション済みの記事はNとMに関わらず常に保持します。
+// それ以外は、件数上限を超えた記事と、既読かつM日を経過した記事を削除対象とします。
+func (i Item) ShouldRetain(now time.Time, rankIndex, maxItems, retainDays int) bool {
+	if i.HasUserAction() {
+		return true
+	}
+	if rankIndex >= maxItems {
+		return false
+	}
+	if i.Read {
+		cutoff := now.AddDate(0, 0, -retainDays)
+		if i.FetchedAt.Before(cutoff) {
+			return false
+		}
+	}
+	return true
+}
