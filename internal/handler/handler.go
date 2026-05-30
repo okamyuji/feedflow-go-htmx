@@ -10,7 +10,8 @@ import (
 // すべてインターフェースとして受け取り、具象型には直接依存しません。
 type Deps struct {
 	Subscriptions     port.SubscriptionService // 購読の追加と削除と一覧と整理を担います
-	Items             port.ItemService         // 記事の既読やスターやあとで読むなどの操作を担います
+	Items             port.ItemService         // 記事の既読やあとで読むなどの操作を担います
+	Bookmarks         port.BookmarkService     // 名称付きブックマークの一覧と作成、記事の所属操作を担います
 	Retention         port.RetentionService    // 保持ポリシーの適用を担います
 	Mutes             port.MuteService         // ミュートフィルタの管理と適用を担います
 	OPML              port.OPMLService         // OPMLの入出力を担います

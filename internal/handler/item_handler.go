@@ -4,55 +4,102 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 	"github.com/okamyuji/feedflow-go-htmx/internal/feed"
 )
 
-// listItemsFor クエリに応じてミュート適用済みの記事群を取得します。
-// feedで単一フィード、categoryでカテゴリ所属フィード、boardでボード保存記事に絞ります。
-// viewが既定(all、unread、無指定)とフィードやカテゴリの一覧は未読だけを残します。
-// view=readは既読だけ、starredはスター済み、readlaterはあとで読む済みを既読既読を問わず残します。
-// boardやstarredやreadlaterは保存系のため未読フィルタを適用しません。
-func (h *Handler) listItemsFor(r *http.Request) ([]domain.Item, error) {
+// readHeadLimit 単一フィード表示時に先頭へ既読として再表示する直近件数の上限です。
+// うっかり既読にした記事を再読しやすくするための件数です。
+const readHeadLimit = 5
+
+// listItemsFor クエリに応じてミュート適用済みの記事群と、未読の開始位置を返します。
+// feedで単一フィード、categoryでカテゴリ所属フィード、bookmarkでブックマーク保存記事に絞ります。
+// viewが既定(無指定)とカテゴリの一覧は未読だけを残します。
+// view=readは既読だけ、bookmarkはブックマーク済み、readlaterはあとで読む済みを既読を問わず残します。
+// 単一フィードの既定表示だけは、直近の既読readHeadLimit件を先頭に既読として並べ、続けて未読を並べます。
+// 戻り値unreadStartは既読先頭群の直後(未読の開始位置)の0始まり添字です。区切りが不要なら-1を返します。
+func (h *Handler) listItemsFor(r *http.Request) (items []domain.Item, unreadStart int, err error) {
 	q := r.URL.Query()
-	items, err := h.deps.Items.ListItems(q.Get("feed"))
+	items, err = h.deps.Items.ListItems(q.Get("feed"))
 	if err != nil {
-		return nil, err
+		return nil, -1, err
 	}
+	unreadStart = -1
 
 	switch q.Get("view") {
 	case "read":
 		items = keepItems(items, func(it domain.Item) bool { return it.Read })
-	case "starred":
-		items = keepItems(items, func(it domain.Item) bool { return it.Starred })
+	case "bookmark":
+		items = keepItems(items, func(it domain.Item) bool { return len(it.BookmarkIDs) > 0 })
 	case "readlater":
 		items = keepItems(items, func(it domain.Item) bool { return it.ReadLater })
 	default:
-		// すべて、未読、フィード、カテゴリの一覧は未読のみを残します。ボード指定時は保存記事を尊重して残します。
-		if q.Get("board") == "" {
+		switch {
+		case q.Get("bookmark") != "":
+			// 後段のブックマーク絞り込みに任せます。
+		case q.Get("feed") != "" && q.Get("category") == "":
+			// 単一フィードの既定表示は、既読先頭群と未読を並べます。
+			items, unreadStart = withReadHead(items, readHeadLimit)
+		default:
+			// すべてやカテゴリの一覧は未読のみを残します。
 			items = keepItems(items, func(it domain.Item) bool { return !it.Read })
 		}
 	}
 
-	if boardID := q.Get("board"); boardID != "" {
-		items = keepItems(items, func(it domain.Item) bool { return containsString(it.BoardIDs, boardID) })
+	if bookmarkID := q.Get("bookmark"); bookmarkID != "" {
+		items = keepItems(items, func(it domain.Item) bool { return containsString(it.BookmarkIDs, bookmarkID) })
 	}
 
 	if categoryID := q.Get("category"); categoryID != "" {
 		feedIDs, ferr := h.feedIDsInCategory(categoryID)
 		if ferr != nil {
-			return nil, ferr
+			return nil, -1, ferr
 		}
 		items = keepItems(items, func(it domain.Item) bool { return containsString(feedIDs, it.FeedID) })
 	}
 
-	filtered, err := h.deps.Mutes.Filter(items)
-	if err != nil {
-		return nil, err
+	filtered, ferr := h.deps.Mutes.Filter(items)
+	if ferr != nil {
+		return nil, -1, ferr
 	}
-	return filtered, nil
+	return filtered, unreadStart, nil
+}
+
+// withReadHead 記事を公開日時の新しい順に並べ、直近の既読limit件を先頭に、続けて未読を並べた列を返します。
+// 戻り値の第2値は未読の開始位置(0始まり添字)です。既読先頭群が無い、または未読が無い場合は-1を返します。
+func withReadHead(items []domain.Item, limit int) ([]domain.Item, int) {
+	sorted := make([]domain.Item, len(items))
+	copy(sorted, items)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].PublishedAt.Equal(sorted[j].PublishedAt) {
+			return sorted[i].FetchedAt.After(sorted[j].FetchedAt)
+		}
+		return sorted[i].PublishedAt.After(sorted[j].PublishedAt)
+	})
+
+	read := make([]domain.Item, 0, limit)
+	unread := make([]domain.Item, 0, len(sorted))
+	for _, it := range sorted {
+		if it.Read {
+			if len(read) < limit {
+				read = append(read, it)
+			}
+			continue
+		}
+		unread = append(unread, it)
+	}
+
+	out := make([]domain.Item, 0, len(read)+len(unread))
+	out = append(out, read...)
+	out = append(out, unread...)
+	unreadStart := -1
+	if len(read) > 0 && len(unread) > 0 {
+		unreadStart = len(read)
+	}
+	return out, unreadStart
 }
 
 // keepItems 述語を満たす記事だけを順序を保って残します。
@@ -115,14 +162,18 @@ func cleanArticleHTML(raw string) template.HTML {
 // itemList 記事一覧の部分テンプレートを描画します。
 func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFromContext(r.Context())
-	items, err := h.listItemsFor(r)
+	items, unreadStart, err := h.listItemsFor(r)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	views := make([]itemView, 0, len(items))
-	for _, it := range items {
-		views = append(views, toItemView(it))
+	for i, it := range items {
+		v := toItemView(it)
+		if i == unreadStart {
+			v.UnreadStart = true
+		}
+		views = append(views, v)
 	}
 	scope, feedID, feedTitle := h.bulkReadContext(r)
 	data := pageData{
@@ -158,11 +209,11 @@ func (h *Handler) bulkReadContext(r *http.Request) (scope, feedID, feedTitle str
 		}
 		return "feed", feed, title
 	}
-	if q.Get("category") != "" || q.Get("board") != "" {
+	if q.Get("category") != "" || q.Get("bookmark") != "" {
 		return "none", "", ""
 	}
 	switch q.Get("view") {
-	case "read", "starred", "readlater":
+	case "read", "bookmark", "readlater":
 		return "none", "", ""
 	default:
 		return "all", "", ""
@@ -235,23 +286,6 @@ func (h *Handler) itemMarkRead(w http.ResponseWriter, r *http.Request) {
 	read := r.FormValue("read") == "true"
 	if err := h.deps.Items.MarkRead(feedID, itemID, read); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	h.renderCard(w, r, feedID, itemID)
-}
-
-// itemStar スター状態を設定し、呼び出し元に応じて再描画します。
-// オーバーレイからの呼び出しはアクション群を、記事カードからの呼び出しはカードを返します。
-func (h *Handler) itemStar(w http.ResponseWriter, r *http.Request) {
-	feedID := r.PathValue("feedID")
-	itemID := r.PathValue("itemID")
-	starred := r.FormValue("starred") == "true"
-	if err := h.deps.Items.Star(feedID, itemID, starred); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if r.FormValue("surface") == "overlay" {
-		h.renderOverlayActions(w, feedID, itemID)
 		return
 	}
 	h.renderCard(w, r, feedID, itemID)

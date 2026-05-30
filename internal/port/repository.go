@@ -26,12 +26,12 @@ type Repository interface {
 	// SaveItems 指定フィードの記事群をまとめて保存します。既存の記事群を置き換えます。
 	SaveItems(feedID string, items []domain.Item) error
 
-	// Boards 全ボードを返します。
-	Boards() ([]domain.Board, error)
-	// SaveBoard ボードを新規追加または更新します。
-	SaveBoard(board domain.Board) error
-	// DeleteBoard 指定IDのボードを削除します。
-	DeleteBoard(id string) error
+	// Bookmarks 全ブックマークを返します。
+	Bookmarks() ([]domain.Bookmark, error)
+	// SaveBookmark ブックマークを新規追加または更新します。
+	SaveBookmark(bookmark domain.Bookmark) error
+	// DeleteBookmark 指定IDのブックマークを削除します。
+	DeleteBookmark(id string) error
 
 	// Filters 全ミュートフィルタを返します。
 	Filters() ([]domain.MuteFilter, error)

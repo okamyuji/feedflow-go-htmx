@@ -42,6 +42,7 @@ function registerFeedflow() {
     activeFeed: "",
     activeItem: "",
     sidebarOpen: true,
+    isMobile: false,
     autoRead: true,
     markedRead: null,
     feedFilter: "",
@@ -57,9 +58,28 @@ function registerFeedflow() {
         this.theme = initial;
       }
       this.applyTheme();
-      const sidebar = localStorage.getItem("feedflow-sidebar");
-      if (sidebar === "closed") {
+
+      // モバイルではツリーをオフキャンバス・ドロワーにするため既定は閉、デスクトップは保存値に従います。
+      const mql = window.matchMedia("(max-width: 48rem)");
+      this.isMobile = mql.matches;
+      if (this.isMobile) {
         this.sidebarOpen = false;
+      } else if (localStorage.getItem("feedflow-sidebar") === "closed") {
+        this.sidebarOpen = false;
+      }
+      // 画面幅が変わったらモバイル判定を更新し、デスクトップへ戻ったらドロワーを開いた状態へ戻します。
+      mql.addEventListener("change", (e) => {
+        this.isMobile = e.matches;
+        this.sidebarOpen = !e.matches;
+      });
+      // モバイルでツリーのリンクをタップして本文が入れ替わったらドロワーを閉じます。
+      const main = document.getElementById("main-pane");
+      if (main) {
+        main.addEventListener("htmx:afterSwap", () => {
+          if (this.isMobile) {
+            this.sidebarOpen = false;
+          }
+        });
       }
       this.autoRead = document.body.getAttribute("data-auto-read") !== "false";
     },
@@ -112,12 +132,19 @@ function registerFeedflow() {
     },
 
     get sidebarClass() {
-      return this.sidebarOpen ? "" : "sidebar-collapsed";
+      return this.sidebarOpen ? "sidebar-open" : "sidebar-collapsed";
     },
 
     toggleSidebar() {
       this.sidebarOpen = !this.sidebarOpen;
-      localStorage.setItem("feedflow-sidebar", this.sidebarOpen ? "open" : "closed");
+      // デスクトップの開閉のみ記憶します。モバイルのドロワーは毎回閉じた状態から始めます。
+      if (!this.isMobile) {
+        localStorage.setItem("feedflow-sidebar", this.sidebarOpen ? "open" : "closed");
+      }
+    },
+
+    closeSidebar() {
+      this.sidebarOpen = false;
     },
 
     applyTheme() {
@@ -238,8 +265,11 @@ function registerFeedflow() {
         card.classList.add("is-read");
         event.preventDefault();
       }
-      if (event.key === "s") {
-        postAction("/app/items/" + feedID + "/" + itemID + "/star", { starred: "true" });
+      if (event.key === "b") {
+        const bookmarkBtn = card.querySelector(".bookmark-btn");
+        if (bookmarkBtn) {
+          bookmarkBtn.click();
+        }
         event.preventDefault();
       }
     },

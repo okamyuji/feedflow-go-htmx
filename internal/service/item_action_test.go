@@ -24,17 +24,6 @@ func first(repo *fakeRepo, feedID string) domain.Item {
 	return items[0]
 }
 
-func TestItemServiceStar(t *testing.T) {
-	t.Parallel()
-	svc, repo := newItemSvcWith(domain.Item{ID: "a1", FeedID: "fA"})
-	if err := svc.Star("fA", "a1", true); err != nil {
-		t.Fatalf("Star returned error: %v", err)
-	}
-	if !first(repo, "fA").Starred {
-		t.Fatalf("item must be starred")
-	}
-}
-
 func TestItemServiceReadLater(t *testing.T) {
 	t.Parallel()
 	svc, repo := newItemSvcWith(domain.Item{ID: "a1", FeedID: "fA"})
@@ -58,15 +47,15 @@ func TestItemServiceSetTags(t *testing.T) {
 	}
 }
 
-func TestItemServiceSetBoards(t *testing.T) {
+func TestItemServiceSetBookmarks(t *testing.T) {
 	t.Parallel()
 	svc, repo := newItemSvcWith(domain.Item{ID: "a1", FeedID: "fA"})
-	if err := svc.SetBoards("fA", "a1", []string{"b1"}); err != nil {
-		t.Fatalf("SetBoards returned error: %v", err)
+	if err := svc.SetBookmarks("fA", "a1", []string{"b1"}); err != nil {
+		t.Fatalf("SetBookmarks returned error: %v", err)
 	}
-	got := first(repo, "fA").BoardIDs
+	got := first(repo, "fA").BookmarkIDs
 	if len(got) != 1 || got[0] != "b1" {
-		t.Fatalf("SetBoards got %+v want [b1]", got)
+		t.Fatalf("SetBookmarks got %+v want [b1]", got)
 	}
 }
 
@@ -96,7 +85,7 @@ func TestItemServiceAddHighlight(t *testing.T) {
 func TestItemServiceActionNotFound(t *testing.T) {
 	t.Parallel()
 	svc, _ := newItemSvcWith(domain.Item{ID: "a1", FeedID: "fA"})
-	if err := svc.Star("fA", "missing", true); err == nil {
-		t.Fatalf("Star must return error for missing item")
+	if err := svc.SetBookmarks("fA", "missing", []string{"b1"}); err == nil {
+		t.Fatalf("SetBookmarks must return error for missing item")
 	}
 }
