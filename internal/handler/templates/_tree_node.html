@@ -28,9 +28,12 @@
   {{ if .Children }}
   <ul class="tree-sub" x-show="open" x-transition style="display:none">
     {{ range .Children }}
-    <li class="tree-item tree-bookmark-item{{ if .Active }} tree-active{{ end }}">
+    {{/* ラベル(名称コレクション)の行。ホバー/フォーカスで名前変更・削除を表示します。
+         編集中はインラインのリネームフォームに切り替えます。CSRFはbodyのhx-headersで供給されます。 */}}
+    <li class="tree-item tree-bookmark-item{{ if .Active }} tree-active{{ end }}" x-data="{ editing: false }">
       <a
         class="tree-link"
+        x-show="!editing"
         {{ if .Active }}aria-current="page"{{ end }}
         href="/app/items?bookmark={{ .ID }}"
         hx-get="/app/items?bookmark={{ .ID }}"
@@ -41,6 +44,43 @@
              フィードの未読バッジは別ノードのため影響しません。 */}}
         <span class="tree-label">{{ .Label }}</span>
       </a>
+      <button
+        class="tree-rename"
+        type="button"
+        x-show="!editing"
+        aria-label="ラベル名を変更"
+        @click="editing = true; $nextTick(() => $refs.renameInput.focus())"
+      >名前変更</button>
+      <button
+        class="tree-unsubscribe"
+        type="button"
+        x-show="!editing"
+        aria-label="ラベルを削除"
+        hx-delete="/app/bookmarks/{{ .ID }}"
+        hx-target="#tree-pane"
+        hx-swap="outerHTML"
+        hx-confirm="このラベルを削除しますか(保存した記事は残ります)"
+      >×</button>
+      <form
+        class="tree-rename-form"
+        x-show="editing"
+        style="display:none"
+        hx-post="/app/bookmarks/{{ .ID }}/rename"
+        hx-target="#tree-pane"
+        hx-swap="outerHTML"
+      >
+        <input
+          class="tree-rename-input"
+          type="text"
+          name="name"
+          value="{{ .Label }}"
+          x-ref="renameInput"
+          aria-label="新しいラベル名"
+          autocomplete="off"
+          required
+          @keydown.escape="editing = false"
+        >
+      </form>
     </li>
     {{ end }}
   </ul>

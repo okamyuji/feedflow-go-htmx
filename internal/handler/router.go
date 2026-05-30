@@ -51,11 +51,9 @@ func (h *Handler) appPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	inBookmarkView := isBookmarkView(r)
 	views := make([]itemView, 0, len(items))
 	for i, it := range items {
 		v := toItemView(it)
-		v.InBookmarkView = inBookmarkView
 		if i == unreadStart {
 			v.UnreadStart = true
 		}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -135,10 +136,28 @@ func isBookmarked(it domain.Item) bool {
 	return it.Bookmarked
 }
 
-// isBookmarkView リクエストがブックマーク(保存)記事のビューかどうかを返します。
+// currentURLQuery HX-Current-URLヘッダのクエリ文字列を返します。
+// 状態変更POSTのURL(/app/items/{feedID}/{itemID}/bookmark など)はビュー情報を持たないため、
+// HTMXが送る現在表示中ページのURLからビュー(view=bookmark など)を読み取るのに使います。
+func currentURLQuery(r *http.Request) string {
+	cur := r.Header.Get("HX-Current-URL")
+	if cur == "" {
+		return ""
+	}
+	u, err := url.Parse(cur)
+	if err != nil {
+		return ""
+	}
+	return u.RawQuery
+}
+
+// isBookmarkViewURL 現在表示中のページがブックマーク(保存)記事のビューかどうかを返します。
 // view=bookmark(全保存記事)とbookmark={id}(ラベル別)の両方を対象とします。
-func isBookmarkView(r *http.Request) bool {
-	q := r.URL.Query()
+func isBookmarkViewURL(r *http.Request) bool {
+	q, err := url.ParseQuery(currentURLQuery(r))
+	if err != nil {
+		return false
+	}
 	return q.Get("view") == "bookmark" || q.Get("bookmark") != ""
 }
 
@@ -207,11 +226,9 @@ func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	inBookmarkView := isBookmarkView(r)
 	views := make([]itemView, 0, len(items))
 	for i, it := range items {
 		v := toItemView(it)
-		v.InBookmarkView = inBookmarkView
 		if i == unreadStart {
 			v.UnreadStart = true
 		}
@@ -319,7 +336,6 @@ func (h *Handler) renderCard(w http.ResponseWriter, r *http.Request, feedID, ite
 		return
 	}
 	v := toItemView(it)
-	v.InBookmarkView = isBookmarkView(r)
 	h.renderWithTreeOOB(w, r, http.StatusOK, "_item_card.html", v)
 }
 
@@ -336,8 +352,9 @@ func (h *Handler) itemMarkRead(w http.ResponseWriter, r *http.Request) {
 }
 
 // itemBookmark 記事の保存(ブックマーク)状態を設定します。
-// 保存オンのときはカードを再描画して「保存済み」表示にします。
-// 保存オフ(解除)のときは、ブックマークビューから当該記事が消え未読数も整合させるため、一覧全体を再描画します。
+// 保存の付け外しはブックマークボタンのピッカー1か所で行うため、応答はピッカーの再描画に一本化します。
+// ブックマークビューで解除した場合は、ピッカー更新に加えて当該記事カードを一覧から取り除きます
+// (記事カード内の解除ボタンを廃し、ブックマークボタンの解除でその挙動を代用するため)。
 func (h *Handler) itemBookmark(w http.ResponseWriter, r *http.Request) {
 	feedID := r.PathValue("feedID")
 	itemID := r.PathValue("itemID")
@@ -350,18 +367,8 @@ func (h *Handler) itemBookmark(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	// ピッカー(記事カード内のパネル)からの操作はピッカーを再描画して開いたまま状態を更新します。
-	// ピッカーはOOBでカードの保存済み表示も同期します。
-	if r.FormValue("surface") == "picker" {
-		h.renderBookmarkPicker(w, r, feedID, itemID)
-		return
-	}
-	// カードの操作ボタンからの解除は、ブックマークビューから当該記事を消し未読数も整合させるため一覧全体を再描画します。
-	if !bookmarked {
-		h.itemList(w, r)
-		return
-	}
-	h.renderCard(w, r, feedID, itemID)
+	removeFromList := !bookmarked && isBookmarkViewURL(r)
+	h.renderBookmarkPicker(w, r, feedID, itemID, removeFromList)
 }
 
 // itemReadLater あとで読む状態を設定し、オーバーレイのアクション群を再描画します。

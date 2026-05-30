@@ -1,7 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"html/template"
+	"log/slog"
 	"net/http"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/service"
@@ -27,7 +31,7 @@ type bookmarkOption struct {
 func (h *Handler) bookmarkPicker(w http.ResponseWriter, r *http.Request) {
 	feedID := r.PathValue("feedID")
 	itemID := r.PathValue("itemID")
-	h.renderBookmarkPicker(w, r, feedID, itemID)
+	h.renderBookmarkPicker(w, r, feedID, itemID, false)
 }
 
 // bookmarkToggle 記事のブックマーク所属を切り替え、ピッカーを再描画します。
@@ -47,7 +51,7 @@ func (h *Handler) bookmarkToggle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	h.renderBookmarkPicker(w, r, feedID, itemID)
+	h.renderBookmarkPicker(w, r, feedID, itemID, false)
 }
 
 // bookmarkCreate 指定名のブックマークを作成して当該記事を所属させ、ピッカーを再描画します。
@@ -68,12 +72,14 @@ func (h *Handler) bookmarkCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	h.renderBookmarkPicker(w, r, feedID, itemID)
+	h.renderBookmarkPicker(w, r, feedID, itemID, false)
 }
 
 // renderBookmarkPicker 最新状態のブックマークと記事の所属を読み直し、ピッカー部分テンプレートを描画します。
 // 元記事が消えている場合でもエラーにはせず、所属なしのピッカーを返します。
-func (h *Handler) renderBookmarkPicker(w http.ResponseWriter, r *http.Request, feedID, itemID string) {
+// removeFromListがtrueのときは、ピッカーに続けて当該記事カードを一覧から取り除くOOB断片を付けます。
+// ブックマークビューでの解除時に、解除した記事を一覧から消すために使います。
+func (h *Handler) renderBookmarkPicker(w http.ResponseWriter, r *http.Request, feedID, itemID string, removeFromList bool) {
 	sess := sessionFromContext(r.Context())
 	bms, err := h.deps.Bookmarks.List()
 	if err != nil {
@@ -99,7 +105,22 @@ func (h *Handler) renderBookmarkPicker(w http.ResponseWriter, r *http.Request, f
 		Options:    options,
 		Bookmarked: bookmarked,
 	}
-	h.renderPartial(w, http.StatusOK, "_bookmark_picker.html", view)
+	var buf bytes.Buffer
+	if err := h.templates.ExecuteTemplate(&buf, "_bookmark_picker.html", view); err != nil {
+		slog.Error("failed to execute template", "template", "_bookmark_picker.html", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if removeFromList {
+		// hx-swap-oob="delete"で当該記事カードを一覧から取り除きます。idはhtml/templateの属性エスケープに委ねます。
+		oob := fmt.Sprintf(`<li id="item-%s" hx-swap-oob="delete"></li>`, template.HTMLEscapeString(itemID))
+		buf.WriteString(oob)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if _, err := buf.WriteTo(w); err != nil {
+		slog.Error("failed to write bookmark picker", "error", err)
+	}
 }
 
 // bookmarkRename 指定IDのラベル名を変更し、ツリーペインを再描画します。
