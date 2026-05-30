@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
@@ -17,6 +18,20 @@ import (
 // ErrNotFound 指定IDのエンティティが見つからないことを表すsentinel errorです。
 // 呼び出し側はerrors.Is(err, store.ErrNotFound)で判別できます。
 var ErrNotFound = errors.New("store: entity not found")
+
+// ErrInvalidID ファイルパスに使えない不正な形式のIDを表すsentinel errorです。
+// パストラバーサルを防ぐため、IDからファイルパスを組み立てる前段で弾きます。
+var ErrInvalidID = errors.New("store: invalid id")
+
+// idPattern ファイル名に使う識別子の許可リストです。英数字とハイフンとアンダースコアのみ、最大64文字です。
+// IDはsysのRandomIDGenが返す16進文字列を想定しますが、テスト用の短いIDも許容します。
+var idPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// validStoreID IDがファイルパスに使える安全な形式かどうかを返します。
+// スラッシュやドット連結("..")などの区切りを含むIDを排除し、パストラバーサルを防ぎます。
+func validStoreID(id string) bool {
+	return idPattern.MatchString(id)
+}
 
 // dirPerm永続化ディレクトリのパーミッションです。所有者のみアクセスを許可します。
 const dirPerm = 0o700

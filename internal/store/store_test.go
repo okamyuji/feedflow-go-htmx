@@ -432,6 +432,31 @@ func TestDeleteBookmarkMissingReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestRejectsPathTraversalFeedID(t *testing.T) {
+	t.Parallel()
+
+	s, err := store.New(filepath.Join(t.TempDir(), "data"))
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	bad := []string{"../escape", "a/b", "..", "", "with space", "x.json"}
+	for _, id := range bad {
+		if _, err := s.Items(id); !errors.Is(err, store.ErrInvalidID) {
+			t.Fatalf("Items(%q) error got %v want ErrInvalidID", id, err)
+		}
+		if err := s.SaveItems(id, nil); !errors.Is(err, store.ErrInvalidID) {
+			t.Fatalf("SaveItems(%q) error got %v want ErrInvalidID", id, err)
+		}
+		if err := s.DeleteFeed(id); !errors.Is(err, store.ErrInvalidID) {
+			t.Fatalf("DeleteFeed(%q) error got %v want ErrInvalidID", id, err)
+		}
+	}
+	// 正常なIDは受け付けます(未登録フィードは空スライス)。
+	if items, err := s.Items("abc123"); err != nil || len(items) != 0 {
+		t.Fatalf("Items(valid) got items=%v err=%v", items, err)
+	}
+}
+
 func TestLoadMigratesBoardsToBookmarks(t *testing.T) {
 	t.Parallel()
 
