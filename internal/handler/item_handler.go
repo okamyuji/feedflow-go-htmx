@@ -65,7 +65,27 @@ func (h *Handler) listItemsFor(r *http.Request) (items []domain.Item, unreadStar
 	if ferr != nil {
 		return nil, -1, ferr
 	}
+	// ミュート適用で件数が変わるため、既読先頭群の直後(未読の開始位置)はフィルタ後の並びで取り直します。
+	if unreadStart != -1 {
+		unreadStart = unreadStartIndex(filtered)
+	}
 	return filtered, unreadStart, nil
+}
+
+// unreadStartIndex 既読が先頭に並んだ列で、最初に現れる未読の0始まり添字を返します。
+// 先頭に既読が無い、または未読が無い場合は区切りが不要なため-1を返します。
+func unreadStartIndex(items []domain.Item) int {
+	sawRead := false
+	for i, it := range items {
+		if it.Read {
+			sawRead = true
+			continue
+		}
+		if sawRead {
+			return i
+		}
+	}
+	return -1
 }
 
 // withReadHead 直近の既読limit件を先頭にまとめ、続けて未読を元の並びのまま並べた列を返します。
