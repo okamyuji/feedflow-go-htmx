@@ -16,7 +16,7 @@ func bookmarkExclusionItems() map[string][]domain.Item {
 		"f1": {
 			{ID: "unread", FeedID: "f1", Title: "未読記事"},
 			{ID: "read", FeedID: "f1", Title: "既読記事", Read: true},
-			{ID: "marked", FeedID: "f1", Title: "ブックマーク記事", BookmarkIDs: []string{"b1"}},
+			{ID: "marked", FeedID: "f1", Title: "ブックマーク記事", Bookmarked: true, BookmarkIDs: []string{"b1"}},
 		},
 	}
 }
@@ -29,7 +29,7 @@ func TestItemListSingleFeedExcludesBookmarked(t *testing.T) {
 	items := map[string][]domain.Item{
 		"f1": {
 			{ID: "unread", FeedID: "f1", Title: "未読記事"},
-			{ID: "marked", FeedID: "f1", Title: "ブックマーク記事", BookmarkIDs: []string{"b1"}},
+			{ID: "marked", FeedID: "f1", Title: "ブックマーク記事", Bookmarked: true, BookmarkIDs: []string{"b1"}},
 		},
 	}
 	h := newAppHandler(t, subs, &stubItems{items: items})
@@ -86,7 +86,7 @@ func TestItemListReadViewExcludesBookmarked(t *testing.T) {
 	items := map[string][]domain.Item{
 		"f1": {
 			{ID: "read", FeedID: "f1", Title: "既読記事", Read: true},
-			{ID: "markedread", FeedID: "f1", Title: "既読かつブックマーク記事", Read: true, BookmarkIDs: []string{"b1"}},
+			{ID: "markedread", FeedID: "f1", Title: "既読かつブックマーク記事", Read: true, Bookmarked: true, BookmarkIDs: []string{"b1"}},
 		},
 	}
 	h := newAppHandler(t, subs, &stubItems{items: items})
@@ -130,9 +130,9 @@ func TestBuildTreeExcludesBookmarkedFromUnread(t *testing.T) {
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
 	items := &stubItems{items: map[string][]domain.Item{
 		"f1": {
-			{ID: "u1", FeedID: "f1"},                              // 未読
-			{ID: "u2", FeedID: "f1"},                              // 未読
-			{ID: "m1", FeedID: "f1", BookmarkIDs: []string{"b1"}}, // 未読だがブックマーク済み→カウント外
+			{ID: "u1", FeedID: "f1"}, // 未読
+			{ID: "u2", FeedID: "f1"}, // 未読
+			{ID: "m1", FeedID: "f1", Bookmarked: true, BookmarkIDs: []string{"b1"}}, // 未読だがブックマーク済み→カウント外
 		},
 	}}
 	h := newAppHandler(t, subs, items)

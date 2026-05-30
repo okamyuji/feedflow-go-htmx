@@ -12,15 +12,15 @@ type bookmarkPickerView struct {
 	FeedID     string           // 対象記事の所属フィードIDです
 	ItemID     string           // 対象記事のIDです
 	CSRFToken  string           // フォーム送信に使うCSRFトークンです
-	Options    []bookmarkOption // 既存ブックマークの選択肢です
-	AnyChecked bool             // いずれかのブックマークに所属しているかどうかです。カードの保存済み表示の同期に使います
+	Options    []bookmarkOption // 既存ラベルの選択肢です
+	Bookmarked bool             // 記事が保存(ブックマーク)済みかどうかです。解除ボタンとカードの保存済み表示の同期に使います
 }
 
 // bookmarkOption ピッカー1行ぶんの選択肢です。
 type bookmarkOption struct {
-	ID      string // ブックマークIDです
-	Name    string // ブックマーク名です
-	Checked bool   // 対象記事が所属しているかどうかです
+	ID      string // ラベルIDです
+	Name    string // ラベル名です
+	Checked bool   // 対象記事がこのラベルに所属しているかどうかです
 }
 
 // bookmarkPicker 記事のブックマーク保存ピッカーを描画します。
@@ -81,26 +81,67 @@ func (h *Handler) renderBookmarkPicker(w http.ResponseWriter, r *http.Request, f
 		return
 	}
 	current := make(map[string]bool)
+	bookmarked := false
 	if it, ok, ferr := h.findItem(feedID, itemID); ferr == nil && ok {
+		bookmarked = it.Bookmarked
 		for _, id := range it.BookmarkIDs {
 			current[id] = true
 		}
 	}
 	options := make([]bookmarkOption, 0, len(bms))
-	anyChecked := false
 	for _, b := range bms {
-		checked := current[b.ID]
-		if checked {
-			anyChecked = true
-		}
-		options = append(options, bookmarkOption{ID: b.ID, Name: b.Name, Checked: checked})
+		options = append(options, bookmarkOption{ID: b.ID, Name: b.Name, Checked: current[b.ID]})
 	}
 	view := bookmarkPickerView{
 		FeedID:     feedID,
 		ItemID:     itemID,
 		CSRFToken:  sess.CSRFToken,
 		Options:    options,
-		AnyChecked: anyChecked,
+		Bookmarked: bookmarked,
 	}
 	h.renderPartial(w, http.StatusOK, "_bookmark_picker.html", view)
+}
+
+// bookmarkRename 指定IDのラベル名を変更し、ツリーペインを再描画します。
+// 空名と重複名は入力誤りとして400を、対象不在は404を返します。
+func (h *Handler) bookmarkRename(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	name := r.FormValue("name")
+	if err := h.deps.Bookmarks.Rename(id, name); err != nil {
+		switch {
+		case errors.Is(err, service.ErrBookmarkNameRequired), errors.Is(err, service.ErrBookmarkNameTaken):
+			http.Error(w, "invalid name", http.StatusBadRequest)
+		case errors.Is(err, service.ErrBookmarkNotFound):
+			http.Error(w, "not found", http.StatusNotFound)
+		default:
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
+		return
+	}
+	h.renderTreePane(w, r)
+}
+
+// bookmarkDelete 指定IDのラベルを削除し、ツリーペインを再描画します。
+// 保存した記事自体は残るため、削除してもブックマークビューから記事は消えません。
+func (h *Handler) bookmarkDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.deps.Bookmarks.Delete(id); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	h.renderTreePane(w, r)
+}
+
+// renderTreePane 左ペインのツリーを最新状態で描画します。ラベルのリネーム/削除後の反映に使います。
+func (h *Handler) renderTreePane(w http.ResponseWriter, r *http.Request) {
+	data, err := h.treeData(r)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	h.renderPartial(w, http.StatusOK, "_tree_pane.html", data)
 }

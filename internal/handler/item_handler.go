@@ -34,7 +34,8 @@ func (h *Handler) listItemsFor(r *http.Request) (items []domain.Item, unreadStar
 		// ブックマーク済みは保管済みとして既読/未読管理の対象外にするため、既読ビューにも出しません。
 		items = keepItems(items, func(it domain.Item) bool { return it.Read && !isBookmarked(it) })
 	case "bookmark":
-		items = keepItems(items, func(it domain.Item) bool { return len(it.BookmarkIDs) > 0 })
+		// 保存済み(Bookmarked)の記事を出します。ラベルが無くても保存していれば対象です。
+		items = keepItems(items, func(it domain.Item) bool { return it.Bookmarked })
 	case "readlater":
 		items = keepItems(items, func(it domain.Item) bool { return it.ReadLater })
 	default:
@@ -131,7 +132,14 @@ func withReadHead(items []domain.Item, limit int) ([]domain.Item, int) {
 // isBookmarked 記事がいずれかのブックマークに所属しているかどうかを返します。
 // ブックマーク済みの記事は保管済みとみなし、未読ストリームや既読ビューや未読カウントの対象から外します。
 func isBookmarked(it domain.Item) bool {
-	return len(it.BookmarkIDs) > 0
+	return it.Bookmarked
+}
+
+// isBookmarkView リクエストがブックマーク(保存)記事のビューかどうかを返します。
+// view=bookmark(全保存記事)とbookmark={id}(ラベル別)の両方を対象とします。
+func isBookmarkView(r *http.Request) bool {
+	q := r.URL.Query()
+	return q.Get("view") == "bookmark" || q.Get("bookmark") != ""
 }
 
 // keepItems 述語を満たす記事だけを順序を保って残します。
@@ -199,9 +207,11 @@ func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	inBookmarkView := isBookmarkView(r)
 	views := make([]itemView, 0, len(items))
 	for i, it := range items {
 		v := toItemView(it)
+		v.InBookmarkView = inBookmarkView
 		if i == unreadStart {
 			v.UnreadStart = true
 		}
@@ -308,7 +318,9 @@ func (h *Handler) renderCard(w http.ResponseWriter, r *http.Request, feedID, ite
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	h.renderWithTreeOOB(w, r, http.StatusOK, "_item_card.html", toItemView(it))
+	v := toItemView(it)
+	v.InBookmarkView = isBookmarkView(r)
+	h.renderWithTreeOOB(w, r, http.StatusOK, "_item_card.html", v)
 }
 
 // itemMarkRead 既読状態を設定し、記事カードとツリーの未読数を再描画します。
@@ -318,6 +330,35 @@ func (h *Handler) itemMarkRead(w http.ResponseWriter, r *http.Request) {
 	read := r.FormValue("read") == "true"
 	if err := h.deps.Items.MarkRead(feedID, itemID, read); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	h.renderCard(w, r, feedID, itemID)
+}
+
+// itemBookmark 記事の保存(ブックマーク)状態を設定します。
+// 保存オンのときはカードを再描画して「保存済み」表示にします。
+// 保存オフ(解除)のときは、ブックマークビューから当該記事が消え未読数も整合させるため、一覧全体を再描画します。
+func (h *Handler) itemBookmark(w http.ResponseWriter, r *http.Request) {
+	feedID := r.PathValue("feedID")
+	itemID := r.PathValue("itemID")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	bookmarked := r.FormValue("bookmarked") == "true"
+	if err := h.deps.Items.SetBookmarked(feedID, itemID, bookmarked); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	// ピッカー(記事カード内のパネル)からの操作はピッカーを再描画して開いたまま状態を更新します。
+	// ピッカーはOOBでカードの保存済み表示も同期します。
+	if r.FormValue("surface") == "picker" {
+		h.renderBookmarkPicker(w, r, feedID, itemID)
+		return
+	}
+	// カードの操作ボタンからの解除は、ブックマークビューから当該記事を消し未読数も整合させるため一覧全体を再描画します。
+	if !bookmarked {
+		h.itemList(w, r)
 		return
 	}
 	h.renderCard(w, r, feedID, itemID)

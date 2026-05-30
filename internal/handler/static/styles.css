@@ -179,6 +179,87 @@ body {
   outline: none;
 }
 
+/* ラベルのリネームボタン(✎)。削除ボタンと同じく普段は控えめ、ホバー/フォーカスで現れます。 */
+.tree-rename {
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration) var(--ease), color var(--duration) var(--ease), background var(--duration) var(--ease);
+}
+
+.tree-item:hover .tree-rename,
+.tree-rename:focus-visible {
+  opacity: 1;
+}
+
+.tree-rename:hover,
+.tree-rename:focus-visible {
+  color: var(--accent);
+  background: var(--surface-2);
+  outline: none;
+}
+
+/* ラベルのインラインリネームフォーム。 */
+.tree-rename-form {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+}
+
+.tree-rename-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.tree-rename-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ピッカー先頭の保存(ブックマーク)トグル。ラベル付け外しとは独立した操作です。 */
+.bookmark-save {
+  margin-bottom: var(--space-1);
+}
+
+.bookmark-save-btn {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration) var(--ease), color var(--duration) var(--ease);
+}
+
+.bookmark-save-btn:hover,
+.bookmark-save-btn:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.bookmark-save-btn.is-saved {
+  color: var(--accent);
+}
+
 .tree-link:hover,
 .tree-link:focus-visible {
   background: var(--surface-2);

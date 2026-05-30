@@ -14,7 +14,7 @@ func TestItemHasUserAction(t *testing.T) {
 		want bool
 	}{
 		{name: "アクションなし", item: Item{}, want: false},
-		{name: "ブックマークのみ", item: Item{BookmarkIDs: []string{"b1"}}, want: true},
+		{name: "保存済みのみ", item: Item{Bookmarked: true}, want: true},
 		{name: "あとで読むのみ", item: Item{ReadLater: true}, want: true},
 		{name: "タグのみ", item: Item{Tags: []string{"go"}}, want: true},
 		{name: "メモのみ", item: Item{Note: "あとで確認します"}, want: true},
@@ -95,7 +95,7 @@ func TestItemShouldRetain(t *testing.T) {
 		},
 		{
 			name:      "アクション済みは件数超過でも永久保持する",
-			item:      Item{BookmarkIDs: []string{"b1"}, Read: true, FetchedAt: old},
+			item:      Item{Bookmarked: true, Read: true, FetchedAt: old},
 			rankIndex: maxItems + 100,
 			want:      true,
 		},
