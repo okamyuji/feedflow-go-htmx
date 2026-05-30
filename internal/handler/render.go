@@ -59,7 +59,6 @@ type feedTreeNode struct {
 	ID             string         // フィードやカテゴリやブックマークのIDです
 	Label          string         // 表示名です
 	UnreadCount    int            // 未読件数です
-	ItemCount      int            // 総件数です。ブックマーク子ノードの所属件数表示に使います
 	HasError       bool           // フィードがエラー状態かどうかです
 	Active         bool           // 現在選択中のノードかどうかです。選択中は左ペインで強調表示します
 	Children       []feedTreeNode // 展開時に表示する子ノードです。ブックマークノードの名称コレクションに使います
@@ -79,6 +78,7 @@ type itemView struct {
 	Read        bool          // 既読かどうかです
 	Bookmarked  bool          // いずれかのブックマークに所属しているかどうかです
 	ReadLater   bool          // あとで読む済みかどうかです
+	HasContent  bool          // 本文を持つかどうかです。本文の無い外部リンクはオーバーレイを開かず元記事を直接開きます
 	UnreadStart bool          // 単一フィード表示で既読先頭群の直後、未読の開始位置かどうかです。区切り線描画に使います
 }
 
