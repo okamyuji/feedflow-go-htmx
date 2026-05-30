@@ -27,6 +27,7 @@
       class="quick-btn bookmark-btn"
       type="button"
       :aria-expanded="bmOpen"
+      aria-controls="bm-panel-{{ .ID }}"
       @click="bmOpen = !bmOpen"
       hx-get="/app/items/{{ .FeedID }}/{{ .ID }}/bookmarks"
       hx-target="#bm-panel-{{ .ID }}"

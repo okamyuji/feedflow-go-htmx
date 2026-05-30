@@ -10,6 +10,7 @@
     :class="{ 'is-active': bmActive }"
     type="button"
     :aria-expanded="bmOpen"
+    aria-controls="overlay-bm-panel-{{ .ID }}"
     @click="bmOpen = !bmOpen"
     hx-get="/app/items/{{ .FeedID }}/{{ .ID }}/bookmarks"
     hx-target="#overlay-bm-panel-{{ .ID }}"

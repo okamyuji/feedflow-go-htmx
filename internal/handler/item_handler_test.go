@@ -316,6 +316,6 @@ func TestItemListBookmarkViewHidesBulkRead(t *testing.T) {
 
 	body := rec.Body.String()
 	if strings.Contains(body, "このフィードを既読") || strings.Contains(body, "表示中をすべて既読") {
-		t.Fatalf("スタービューでは一括既読コントロールを出してはいけません: %q", body)
+		t.Fatalf("ブックマークビューでは一括既読コントロールを出してはいけません: %q", body)
 	}
 }

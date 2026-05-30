@@ -215,7 +215,7 @@ func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 
 // bulkReadContext 一括既読コントロールの表示範囲をリクエストのクエリから決めます。
 // 特定フィード選択時はそのフィードだけ、すべて(未読ストリーム)表示時は全フィード、
-// 既読やスターやあとで読むやカテゴリやボードのビューでは一括既読の対象が定まらないため非表示にします。
+// 既読やブックマークやあとで読むやカテゴリやブックマーク絞り込みのビューでは一括既読の対象が定まらないため非表示にします。
 func (h *Handler) bulkReadContext(r *http.Request) (scope, feedID, feedTitle string) {
 	q := r.URL.Query()
 	if feed := q.Get("feed"); feed != "" {

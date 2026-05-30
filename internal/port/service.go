@@ -22,7 +22,7 @@ type SubscriptionService interface {
 	SetFeedCategories(feedID string, categoryIDs []string) error
 }
 
-// ItemService 記事の既読やスターやあとで読むやタグやボードやメモの操作を担う抽象です。
+// ItemService 記事の既読やあとで読むやタグやブックマークやメモの操作を担う抽象です。
 // 設計書のセクション3.1に対応します。
 type ItemService interface {
 	// ListItems 指定フィードの記事をミュート適用済みで返します。feedIDが空なら全フィード横断で返します。

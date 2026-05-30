@@ -11,7 +11,7 @@ import (
 // ErrItemNotFound 指定IDの記事が見つからないときに返すエラーです。
 var ErrItemNotFound = errors.New("item not found")
 
-// ItemService 記事の既読やスターやあとで読むやタグやボードやメモの操作を担います。
+// ItemService 記事の既読やあとで読むやタグやブックマークやメモの操作を担います。
 // port.ItemService を満たします。
 type ItemService struct {
 	deps Deps
