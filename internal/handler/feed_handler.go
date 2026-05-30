@@ -254,7 +254,7 @@ func toItemView(it domain.Item) itemView {
 		Author:      it.Author,
 		PublishedAt: formatJST(it.PublishedAt),
 		Read:        it.Read,
-		Bookmarked:  len(it.BookmarkIDs) > 0,
+		Bookmarked:  it.Bookmarked,
 		ReadLater:   it.ReadLater,
 		HasContent:  strings.TrimSpace(it.Content) != "",
 	}

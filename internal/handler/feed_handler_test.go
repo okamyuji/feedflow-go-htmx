@@ -67,6 +67,7 @@ func (s *stubItems) MarkAllRead(_ string) error                 { return nil }
 func (s *stubItems) ReadLater(_, _ string, _ bool) error        { return nil }
 func (s *stubItems) SetTags(_, _ string, _ []string) error      { return nil }
 func (s *stubItems) SetBookmarks(_, _ string, _ []string) error { return nil }
+func (s *stubItems) SetBookmarked(_, _ string, _ bool) error    { return nil }
 func (s *stubItems) SetNote(_, _, _ string) error               { return nil }
 func (s *stubItems) AddHighlight(_, _, _ string) error          { return nil }
 
@@ -103,6 +104,25 @@ func (s *stubBookmarks) CreateAndAdd(feedID, itemID, name string) (domain.Bookma
 	s.lastFeedID = feedID
 	s.lastItemID = itemID
 	return bm, nil
+}
+func (s *stubBookmarks) Rename(id, name string) error {
+	for i, b := range s.list {
+		if b.ID == id {
+			s.list[i].Name = name
+			return nil
+		}
+	}
+	return nil
+}
+func (s *stubBookmarks) Delete(id string) error {
+	next := s.list[:0]
+	for _, b := range s.list {
+		if b.ID != id {
+			next = append(next, b)
+		}
+	}
+	s.list = next
+	return nil
 }
 
 // stubMutes MuteServiceの最小スタブです。フィルタなしで素通しします。

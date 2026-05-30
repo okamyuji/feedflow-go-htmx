@@ -51,9 +51,11 @@ func (h *Handler) appPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	inBookmarkView := isBookmarkView(r)
 	views := make([]itemView, 0, len(items))
 	for i, it := range items {
 		v := toItemView(it)
+		v.InBookmarkView = inBookmarkView
 		if i == unreadStart {
 			v.UnreadStart = true
 		}
@@ -114,8 +116,11 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /app/items/markall", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemMarkAll))))
 	mux.Handle("POST /app/items/{feedID}/{itemID}/read", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemMarkRead))))
 	mux.Handle("POST /app/items/{feedID}/{itemID}/readlater", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemReadLater))))
+	mux.Handle("POST /app/items/{feedID}/{itemID}/bookmark", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemBookmark))))
 	mux.Handle("POST /app/items/{feedID}/{itemID}/bookmarks/toggle", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkToggle))))
 	mux.Handle("POST /app/bookmarks", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkCreate))))
+	mux.Handle("POST /app/bookmarks/{id}/rename", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkRename))))
+	mux.Handle("DELETE /app/bookmarks/{id}", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkDelete))))
 	mux.Handle("POST /app/settings", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.settingsUpdate))))
 	mux.Handle("POST /app/opml/import", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.opmlImport))))
 
