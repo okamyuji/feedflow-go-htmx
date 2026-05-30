@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 )
@@ -262,5 +263,6 @@ func toItemView(it domain.Item) itemView {
 		Read:        it.Read,
 		Bookmarked:  len(it.BookmarkIDs) > 0,
 		ReadLater:   it.ReadLater,
+		HasContent:  strings.TrimSpace(it.Content) != "",
 	}
 }

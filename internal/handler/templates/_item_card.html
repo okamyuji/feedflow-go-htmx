@@ -10,10 +10,15 @@
   <a
     class="item-open"
     href="{{ .Link }}"
+    {{ if .HasContent }}
     hx-get="/app/items/{{ .FeedID }}/{{ .ID }}"
     hx-target="#reading-overlay"
     hx-swap="innerHTML"
     @click.prevent="openOverlay"
+    {{ else }}
+    target="_blank"
+    rel="noopener noreferrer"
+    {{ end }}
   >
     <h3 class="item-title">{{ .Title }}</h3>
     <p class="item-summary">{{ .Summary }}</p>
