@@ -37,8 +37,9 @@
         hx-target="#main-pane"
         hx-push-url="true"
       >
+        {{/* ブックマークは意図的に保存したものなので、件数バッジは出しません(見やすさ優先)。
+             フィードの未読バッジは別ノードのため影響しません。 */}}
         <span class="tree-label">{{ .Label }}</span>
-        {{ if gt .ItemCount 0 }}<span class="tree-badge">{{ .ItemCount }}</span>{{ end }}
       </a>
     </li>
     {{ end }}

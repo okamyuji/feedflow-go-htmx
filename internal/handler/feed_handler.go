@@ -33,7 +33,7 @@ func (h *Handler) buildTree() ([]feedTreeNode, error) {
 		}
 	}
 
-	bookmarkNode, err := h.buildBookmarkNode(allItems)
+	bookmarkNode, err := h.buildBookmarkNode()
 	if err != nil {
 		return nil, err
 	}
@@ -90,25 +90,18 @@ func feedNode(f domain.Feed, unread int) feedTreeNode {
 }
 
 // buildBookmarkNode ブックマークの親ノードと名称コレクションの子ノードを組み立てます。
-// 子ノードには各ブックマークの所属件数を持たせます。元記事が消えた所属は自然に件数へ反映されません。
-func (h *Handler) buildBookmarkNode(allItems []domain.Item) (feedTreeNode, error) {
+// ブックマークは意図的に保存したものなので、子ノードに所属件数バッジは出しません(見やすさ優先)。
+func (h *Handler) buildBookmarkNode() (feedTreeNode, error) {
 	bookmarks, err := h.deps.Bookmarks.List()
 	if err != nil {
 		return feedTreeNode{}, err
 	}
-	countByID := make(map[string]int)
-	for _, it := range allItems {
-		for _, id := range it.BookmarkIDs {
-			countByID[id]++
-		}
-	}
 	children := make([]feedTreeNode, 0, len(bookmarks))
 	for _, b := range bookmarks {
 		children = append(children, feedTreeNode{
-			Kind:      "bookmarkItem",
-			ID:        b.ID,
-			Label:     b.Name,
-			ItemCount: countByID[b.ID],
+			Kind:  "bookmarkItem",
+			ID:    b.ID,
+			Label: b.Name,
 		})
 	}
 	return feedTreeNode{Kind: "bookmark", Label: "ブックマーク", Children: children}, nil
