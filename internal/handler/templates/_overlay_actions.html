@@ -15,7 +15,7 @@
     hx-get="/app/items/{{ .FeedID }}/{{ .ID }}/bookmarks"
     hx-target="#overlay-bm-panel-{{ .ID }}"
     hx-swap="innerHTML"
-  >🔖 <span x-text="bmActive ? 'ブックマーク済み' : 'ブックマーク'">{{ if .Bookmarked }}ブックマーク済み{{ else }}ブックマーク{{ end }}</span></button>
+  ><span x-text="bmActive ? 'ブックマーク済み' : 'ブックマーク'">{{ if .Bookmarked }}ブックマーク済み{{ else }}ブックマーク{{ end }}</span></button>
   <button
     class="quick-btn{{ if .ReadLater }} is-active{{ end }}"
     hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/readlater"

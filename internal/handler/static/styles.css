@@ -179,10 +179,11 @@ body {
   outline: none;
 }
 
-/* ラベルのリネームボタン(✎)。削除ボタンと同じく普段は控えめ、ホバー/フォーカスで現れます。 */
+/* ラベルの名前変更ボタン。削除ボタンと同じく普段は控えめ、ホバー/フォーカスで現れます。
+   絵文字は使わず「名前変更」のテキストで示すため、正方形アイコンではなく文字が収まる小型ボタンにします。 */
 .tree-rename {
   flex: 0 0 auto;
-  width: 1.75rem;
+  padding: 0 var(--space-1);
   height: 1.75rem;
   display: grid;
   place-items: center;
@@ -192,6 +193,7 @@ body {
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
   opacity: 0;
   transition: opacity var(--duration) var(--ease), color var(--duration) var(--ease), background var(--duration) var(--ease);

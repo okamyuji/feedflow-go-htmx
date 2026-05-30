@@ -67,20 +67,19 @@ type feedTreeNode struct {
 
 // itemView 右ペインとオーバーレイで描画する記事の表示モデルです。
 type itemView struct {
-	ID             string        // 記事IDです
-	FeedID         string        // 所属フィードIDです
-	Title          string        // タイトルです
-	Link           string        // 元記事のURLです
-	Summary        string        // 要約です
-	Content        template.HTML // 本文です。html/templateの自動エスケープを経た安全な文字列だけを格納します
-	Author         string        // 著者名です
-	PublishedAt    string        // JST整形済みの公開日時です
-	Read           bool          // 既読かどうかです
-	Bookmarked     bool          // ブックマーク(保存)済みかどうかです
-	ReadLater      bool          // あとで読む済みかどうかです
-	HasContent     bool          // 本文を持つかどうかです。本文の無い外部リンクはオーバーレイを開かず元記事を直接開きます
-	InBookmarkView bool          // ブックマークビューで描画しているかどうかです。記事カードの操作ボタンの出し分けに使います
-	UnreadStart    bool          // 単一フィード表示で既読先頭群の直後、未読の開始位置かどうかです。区切り線描画に使います
+	ID          string        // 記事IDです
+	FeedID      string        // 所属フィードIDです
+	Title       string        // タイトルです
+	Link        string        // 元記事のURLです
+	Summary     string        // 要約です
+	Content     template.HTML // 本文です。html/templateの自動エスケープを経た安全な文字列だけを格納します
+	Author      string        // 著者名です
+	PublishedAt string        // JST整形済みの公開日時です
+	Read        bool          // 既読かどうかです
+	Bookmarked  bool          // ブックマーク(保存)済みかどうかです
+	ReadLater   bool          // あとで読む済みかどうかです
+	HasContent  bool          // 本文を持つかどうかです。本文の無い外部リンクはオーバーレイを開かず元記事を直接開きます
+	UnreadStart bool          // 単一フィード表示で既読先頭群の直後、未読の開始位置かどうかです。区切り線描画に使います
 }
 
 // formatJST 時刻をJSTに変換して"2006-01-02 15:04"形式で返します。ゼロ値は空文字を返します。

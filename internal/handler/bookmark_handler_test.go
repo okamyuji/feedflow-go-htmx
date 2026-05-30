@@ -53,8 +53,8 @@ func TestBookmarkPickerRendersOptions(t *testing.T) {
 	if !strings.Contains(body, "is-checked") {
 		t.Fatalf("所属済みのブックマークはチェック表示されるべき: %q", body)
 	}
-	if !strings.Contains(body, "保存済み") {
-		t.Fatalf("所属があればカードの保存済み表示をOOB更新すべき: %q", body)
+	if !strings.Contains(body, "ブックマーク解除") {
+		t.Fatalf("保存済みの記事はピッカーに解除ボタンを出すべき: %q", body)
 	}
 }
 

@@ -14,7 +14,7 @@
       hx-vals='{"bookmarked": "false", "surface": "picker"}'
       hx-target="#bookmark-picker-{{ .ItemID }}"
       hx-swap="outerHTML"
-    >🔖 ブックマーク解除</button>
+    >ブックマーク解除</button>
     {{ else }}
     <button
       type="button"
@@ -23,7 +23,7 @@
       hx-vals='{"bookmarked": "true", "surface": "picker"}'
       hx-target="#bookmark-picker-{{ .ItemID }}"
       hx-swap="outerHTML"
-    >🔖 ブックマークに保存</button>
+    >ブックマークに保存</button>
     {{ end }}
   </div>
   {{/* ラベル(任意の分類)。チェックで付け外し。付けると自動で保存済みになります。 */}}
@@ -66,10 +66,5 @@
       required
     >
   </form>
-  <span
-    class="item-bookmark"
-    id="bm-indicator-{{ .ItemID }}"
-    hx-swap-oob="true"
-  >{{ if .Bookmarked }}🔖 保存済み{{ end }}</span>
 </div>
 {{ end }}
