@@ -27,3 +27,6 @@ node_modules/
 
 # verify-hardening.shの一時ディレクトリ
 .hardening-tmp/
+
+# Playwright MCP のスクリーンショット出力
+.playwright-mcp/
