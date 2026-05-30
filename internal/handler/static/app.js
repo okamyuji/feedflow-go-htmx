@@ -97,19 +97,34 @@ function registerFeedflow() {
         });
       }
 
-      // 左サイドバー(tree-pane)のスクロール位置を、HTMXのスワップ(OOB含む)をまたいで保持します。
-      // フィード選択・購読追加・購読解除・記事オーバーレイ表示のたびにtree-pane全体が差し替わり、
-      // 何もしないと先頭に戻って今どれを選んでいるか分からなくなるためです。
+      // 左サイドバー(tree-pane)のスクロール位置を、tree-paneを差し替えるHTMXスワップをまたいで保持します。
+      // フィード選択(OOBでtree-paneを同梱)・購読追加/解除(tree-paneを直接差し替え)のたびにコンテナごと
+      // 作り直され、何もしないと先頭に戻って今どれを選んでいるか分からなくなるためです。
+      // ただしtree-paneに無関係なスワップ(自動既読でtree-paneを含まないカード差し替えやブックマーク操作など)で
+      // スクロール位置を巻き戻さないよう、退避と復元はtree-paneが差し替わるスワップに限定します。
+      // 判定はスワップ対象自体がtree-paneか、レスポンスにtree-paneのOOBが含まれるかで行います。
       // htmxはbeforeSwapをswap()やOOB処理より前に発火するので、差し替え前の値を確実に退避できます。
-      document.body.addEventListener("htmx:beforeSwap", () => {
+      let restoreTreeScroll = false;
+      document.body.addEventListener("htmx:beforeSwap", (event) => {
         const tree = document.getElementById("tree-pane");
-        if (tree) {
+        const detail = event.detail || {};
+        const target = detail.target;
+        const response = detail.serverResponse || "";
+        const swapsTree =
+          (!!target && (target.id === "tree-pane" || (!!tree && target.contains(tree)))) ||
+          response.indexOf('id="tree-pane"') !== -1;
+        restoreTreeScroll = swapsTree && !!tree;
+        if (restoreTreeScroll) {
           this.treeScrollTop = tree.scrollTop;
         }
       });
       // 差し替え後のtree-paneへ退避値を復元します。要素が作り直されてもidで取り直して設定します。
       // 購読解除で内容が縮む場合はブラウザがclampするため、削除位置の近辺が保たれます。
       document.body.addEventListener("htmx:afterSettle", () => {
+        if (!restoreTreeScroll) {
+          return;
+        }
+        restoreTreeScroll = false;
         const tree = document.getElementById("tree-pane");
         if (tree) {
           tree.scrollTop = this.treeScrollTop;
