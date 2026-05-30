@@ -68,7 +68,7 @@ test.describe("ブックマーク", () => {
     await expect(actions.locator("button.is-active")).toContainText("ブックマーク済み");
   });
 
-  test("既存ブックマークへのトグルで所属を切り替えられる", async ({ page }) => {
+  test("既存ラベルへのトグルで所属を切り替えられる(保存は維持)", async ({ page }) => {
     const first = page.locator(".item-list li.item-card").first();
     await first.locator(".bookmark-btn").click();
     const input = first.locator(".bookmark-panel .bookmark-create-input");
@@ -77,9 +77,10 @@ test.describe("ブックマーク", () => {
     const option = first.locator(".bookmark-panel .bookmark-option", { hasText: "読み物" });
     await expect(option).toHaveClass(/is-checked/);
 
-    // もう一度トグルすると外れ、保存済み表示が消えます。
+    // もう一度トグルするとラベルのチェックは外れます。
     await option.click();
     await expect(option).not.toHaveClass(/is-checked/);
-    await expect(first.locator(".item-bookmark")).not.toContainText("保存済み");
+    // ただし保存(ブックマーク)状態は維持されます(保存とラベルの分離)。
+    await expect(first.locator(".item-bookmark")).toContainText("保存済み");
   });
 });
