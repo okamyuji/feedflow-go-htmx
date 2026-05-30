@@ -43,6 +43,9 @@ func (h *Handler) listItemsFor(r *http.Request) (items []domain.Item, unreadStar
 			// 後段のブックマーク絞り込みに任せます。
 		case q.Get("feed") != "" && q.Get("category") == "":
 			// 単一フィードの既定表示は、既読先頭群と未読を並べます。
+			// ブックマーク済みは保管済みとして除外します。除外しないと、未読バッジ(unreadByFeedは
+			// ブックマーク済みを数えない)と一覧の未読件数がずれてしまいます。
+			items = keepItems(items, func(it domain.Item) bool { return !isBookmarked(it) })
 			items, unreadStart = withReadHead(items, readHeadLimit)
 		default:
 			// すべてやカテゴリの一覧は未読のみを残します。

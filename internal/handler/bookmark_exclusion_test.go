@@ -21,6 +21,37 @@ func bookmarkExclusionItems() map[string][]domain.Item {
 	}
 }
 
+// TestItemListSingleFeedExcludesBookmarked 単一フィードの既定表示でもブックマーク済みを除外します。
+// 未読バッジ(unreadByFeed)がブックマーク済みを数えないため、一覧側も除外して件数の整合を保ちます。
+func TestItemListSingleFeedExcludesBookmarked(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	items := map[string][]domain.Item{
+		"f1": {
+			{ID: "unread", FeedID: "f1", Title: "未読記事"},
+			{ID: "marked", FeedID: "f1", Title: "ブックマーク記事", BookmarkIDs: []string{"b1"}},
+		},
+	}
+	h := newAppHandler(t, subs, &stubItems{items: items})
+	req := httptest.NewRequest(http.MethodGet, "/app/items?feed=f1", nil)
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemList(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "未読記事") {
+		t.Fatalf("単一フィードは未読記事を表示すべきです: %q", body)
+	}
+	if strings.Contains(body, "ブックマーク記事") {
+		t.Fatalf("単一フィードはブックマーク済み記事を含めてはいけません: %q", body)
+	}
+}
+
 // TestItemListAllViewExcludesBookmarked すべて(未読ストリーム)はブックマーク済みを保管済みとして除外します。
 func TestItemListAllViewExcludesBookmarked(t *testing.T) {
 	t.Parallel()
