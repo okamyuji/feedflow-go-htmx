@@ -22,7 +22,7 @@ type SubscriptionService interface {
 	SetFeedCategories(feedID string, categoryIDs []string) error
 }
 
-// ItemService 記事の既読やスターやあとで読むやタグやボードやメモの操作を担う抽象です。
+// ItemService 記事の既読やあとで読むやタグやブックマークやメモの操作を担う抽象です。
 // 設計書のセクション3.1に対応します。
 type ItemService interface {
 	// ListItems 指定フィードの記事をミュート適用済みで返します。feedIDが空なら全フィード横断で返します。
@@ -31,18 +31,28 @@ type ItemService interface {
 	MarkRead(feedID, itemID string, read bool) error
 	// MarkAllRead 指定フィードの全記事を既読にします。feedIDが空なら全フィードを対象にします。
 	MarkAllRead(feedID string) error
-	// Star 指定記事のスター状態を設定します。
-	Star(feedID, itemID string, starred bool) error
 	// ReadLater 指定記事のあとで読む状態を設定します。
 	ReadLater(feedID, itemID string, readLater bool) error
 	// SetTags 指定記事のタグを更新します。
 	SetTags(feedID, itemID string, tags []string) error
-	// SetBoards 指定記事の保存先ボードを更新します。
-	SetBoards(feedID, itemID string, boardIDs []string) error
+	// SetBookmarks 指定記事の所属ブックマークを与えた内容で置き換えます。
+	SetBookmarks(feedID, itemID string, bookmarkIDs []string) error
 	// SetNote 指定記事のメモを更新します。
 	SetNote(feedID, itemID, note string) error
 	// AddHighlight 指定記事にハイライトを追加します。
 	AddHighlight(feedID, itemID, highlight string) error
+}
+
+// BookmarkService 名称付きブックマークの一覧と作成、記事の所属操作を担う抽象です。
+type BookmarkService interface {
+	// List 全ブックマークを返します。
+	List() ([]domain.Bookmark, error)
+	// Create 指定名のブックマークを作成して返します。同名が既存ならそれを返します。
+	Create(name string) (domain.Bookmark, error)
+	// Toggle 指定記事のブックマーク所属を切り替えます。
+	Toggle(feedID, itemID, bookmarkID string) error
+	// CreateAndAdd 指定名のブックマークを用意し、指定記事を所属させて返します。
+	CreateAndAdd(feedID, itemID, name string) (domain.Bookmark, error)
 }
 
 // RetentionService 保持ポリシーの適用を担う抽象です。設計書のセクション4.1に対応します。

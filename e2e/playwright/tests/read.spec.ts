@@ -38,6 +38,21 @@ test.describe("既読化", () => {
     await expect(page.locator(".item-list li.item-card:not(.is-read)")).toHaveCount(0);
   });
 
+  test("単一フィードでは既読記事が先頭に再表示され区切りが出る", async ({ page }) => {
+    // 1件を既読にしてから再読込し、フィードを開き直します。
+    const first = page.locator(".item-list li.item-card").first();
+    await first.locator(".item-quick button.quick-btn", { hasText: "既読" }).click();
+    await expect(page.locator(".item-list li.item-card.is-read")).toHaveCount(1);
+
+    await page.reload();
+    await page.locator("#tree-pane a.tree-link", { hasText: "E2E Sample Feed" }).last().click();
+
+    // 既読1件が先頭に残り、未読との間に区切りが出ます。
+    await expect(page.locator(".item-list li.item-card")).toHaveCount(2);
+    await expect(page.locator(".item-list li.item-card.is-read")).toHaveCount(1);
+    await expect(page.locator(".item-unread-divider")).toBeVisible();
+  });
+
   test("既読状態は再読込後も維持される", async ({ page }) => {
     await page.click(".item-list-bar .markread-primary");
     await expect(page.locator(".item-list li.item-card:not(.is-read)")).toHaveCount(0);

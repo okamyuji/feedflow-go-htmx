@@ -1,9 +1,11 @@
 {{ define "_item_card.html" }}
+{{ if .UnreadStart }}<li class="item-unread-divider" aria-hidden="true"><span>ここから未読</span></li>{{ end }}
 <li
   class="item-card{{ if .Read }} is-read{{ end }}"
   id="item-{{ .ID }}"
   data-feed="{{ .FeedID }}"
   data-item="{{ .ID }}"
+  x-data="{ bmOpen: false }"
 >
   <a
     class="item-open"
@@ -17,17 +19,20 @@
     <p class="item-summary">{{ .Summary }}</p>
     <div class="item-meta">
       <time>{{ .PublishedAt }}</time>
-      {{ if .Starred }}<span class="item-star">保存済み</span>{{ end }}
+      <span class="item-bookmark" id="bm-indicator-{{ .ID }}">{{ if .Bookmarked }}🔖 保存済み{{ end }}</span>
     </div>
   </a>
   <div class="item-quick">
     <button
-      class="quick-btn"
-      hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/star"
-      hx-vals='{"starred": "{{ if .Starred }}false{{ else }}true{{ end }}"}'
-      hx-target="#item-{{ .ID }}"
-      hx-swap="outerHTML"
-    >{{ if .Starred }}スター解除{{ else }}スター{{ end }}</button>
+      class="quick-btn bookmark-btn"
+      type="button"
+      :aria-expanded="bmOpen"
+      aria-controls="bm-panel-{{ .ID }}"
+      @click="bmOpen = !bmOpen"
+      hx-get="/app/items/{{ .FeedID }}/{{ .ID }}/bookmarks"
+      hx-target="#bm-panel-{{ .ID }}"
+      hx-swap="innerHTML"
+    >🔖 ブックマーク</button>
     <button
       class="quick-btn"
       hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/read"
@@ -36,5 +41,13 @@
       hx-swap="outerHTML"
     >{{ if .Read }}未読に戻す{{ else }}既読{{ end }}</button>
   </div>
+  <div
+    class="bookmark-panel"
+    id="bm-panel-{{ .ID }}"
+    x-show="bmOpen"
+    x-transition
+    @click.outside="bmOpen = false"
+    style="display:none"
+  ></div>
 </li>
 {{ end }}

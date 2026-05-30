@@ -77,10 +77,36 @@ export async function login(page: Page): Promise<void> {
   await expect(page.locator(".app-shell")).toBeVisible();
 }
 
-// setupAndLogin は初回セットアップとログインを連続して行います。
+// clearAllFeeds は既存の購読フィードをすべて解除し、各テストを順序非依存のクリーンな状態から始めます。
+// E2Eサーバはスイート全体でデータを共有するため、前のテストが残したフィードを取り除きます。
+export async function clearAllFeeds(page: Page): Promise<void> {
+  // 購読解除はhx-confirmのダイアログを挟むため、この処理の間だけ受理ハンドラを付けます。
+  // 各テストが独自のダイアログ処理を持てるよう、終了時にハンドラを必ず外します。
+  const acceptDialog = (dialog: import("@playwright/test").Dialog) => dialog.accept();
+  page.on("dialog", acceptDialog);
+  try {
+    if (!page.url().includes("/app")) {
+      await page.goto("/app");
+    }
+    for (;;) {
+      const buttons = page.locator("#tree-pane .tree-unsubscribe");
+      const remaining = await buttons.count();
+      if (remaining === 0) {
+        break;
+      }
+      await buttons.first().click();
+      await expect(page.locator("#tree-pane .tree-unsubscribe")).toHaveCount(remaining - 1);
+    }
+  } finally {
+    page.off("dialog", acceptDialog);
+  }
+}
+
+// setupAndLogin は初回セットアップとログインを連続して行い、購読フィードを空に整えます。
 export async function setupAndLogin(page: Page): Promise<void> {
   await completeSetup(page);
   await login(page);
+  await clearAllFeeds(page);
 }
 
 // addFeed は購読追加フォームにフィードURLを入れて登録します。

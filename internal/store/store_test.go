@@ -386,49 +386,102 @@ func TestItemsPersistAcrossReload(t *testing.T) {
 	}
 }
 
-func TestSaveAndDeleteBoard(t *testing.T) {
+func TestSaveAndDeleteBookmark(t *testing.T) {
 	t.Parallel()
 
 	s, err := store.New(filepath.Join(t.TempDir(), "data"))
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
-	if err := s.SaveBoard(domain.Board{ID: "b1", Name: "Reading", Description: "later"}); err != nil {
-		t.Fatalf("SaveBoard returned error: %v", err)
+	if err := s.SaveBookmark(domain.Bookmark{ID: "b1", Name: "Reading"}); err != nil {
+		t.Fatalf("SaveBookmark returned error: %v", err)
 	}
-	if err := s.SaveBoard(domain.Board{ID: "b1", Name: "Reading List", Description: "later"}); err != nil {
-		t.Fatalf("SaveBoard update returned error: %v", err)
-	}
-
-	boards, err := s.Boards()
-	if err != nil {
-		t.Fatalf("Boards returned error: %v", err)
-	}
-	if len(boards) != 1 || boards[0].Name != "Reading List" {
-		t.Fatalf("boards got %+v want one Reading List", boards)
+	if err := s.SaveBookmark(domain.Bookmark{ID: "b1", Name: "Reading List"}); err != nil {
+		t.Fatalf("SaveBookmark update returned error: %v", err)
 	}
 
-	if err := s.DeleteBoard("b1"); err != nil {
-		t.Fatalf("DeleteBoard returned error: %v", err)
-	}
-	boards, err = s.Boards()
+	bookmarks, err := s.Bookmarks()
 	if err != nil {
-		t.Fatalf("Boards returned error: %v", err)
+		t.Fatalf("Bookmarks returned error: %v", err)
 	}
-	if len(boards) != 0 {
-		t.Fatalf("boards after delete got %d want 0", len(boards))
+	if len(bookmarks) != 1 || bookmarks[0].Name != "Reading List" {
+		t.Fatalf("bookmarks got %+v want one Reading List", bookmarks)
+	}
+
+	if err := s.DeleteBookmark("b1"); err != nil {
+		t.Fatalf("DeleteBookmark returned error: %v", err)
+	}
+	bookmarks, err = s.Bookmarks()
+	if err != nil {
+		t.Fatalf("Bookmarks returned error: %v", err)
+	}
+	if len(bookmarks) != 0 {
+		t.Fatalf("bookmarks after delete got %d want 0", len(bookmarks))
 	}
 }
 
-func TestDeleteBoardMissingReturnsNotFound(t *testing.T) {
+func TestDeleteBookmarkMissingReturnsNotFound(t *testing.T) {
 	t.Parallel()
 
 	s, err := store.New(filepath.Join(t.TempDir(), "data"))
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
-	if err := s.DeleteBoard("missing"); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("DeleteBoard error got %v want ErrNotFound", err)
+	if err := s.DeleteBookmark("missing"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("DeleteBookmark error got %v want ErrNotFound", err)
+	}
+}
+
+func TestRejectsPathTraversalFeedID(t *testing.T) {
+	t.Parallel()
+
+	s, err := store.New(filepath.Join(t.TempDir(), "data"))
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	bad := []string{"../escape", "a/b", "..", "", "with space", "x.json"}
+	for _, id := range bad {
+		if _, err := s.Items(id); !errors.Is(err, store.ErrInvalidID) {
+			t.Fatalf("Items(%q) error got %v want ErrInvalidID", id, err)
+		}
+		if err := s.SaveItems(id, nil); !errors.Is(err, store.ErrInvalidID) {
+			t.Fatalf("SaveItems(%q) error got %v want ErrInvalidID", id, err)
+		}
+		if err := s.DeleteFeed(id); !errors.Is(err, store.ErrInvalidID) {
+			t.Fatalf("DeleteFeed(%q) error got %v want ErrInvalidID", id, err)
+		}
+	}
+	// 正常なIDは受け付けます(未登録フィードは空スライス)。
+	if items, err := s.Items("abc123"); err != nil || len(items) != 0 {
+		t.Fatalf("Items(valid) got items=%v err=%v", items, err)
+	}
+}
+
+func TestLoadMigratesBoardsToBookmarks(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "data")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	legacy := []byte(`[{"id":"b1","name":"旧ボード","description":"x"}]`)
+	if err := os.WriteFile(filepath.Join(dir, "boards.json"), legacy, 0o600); err != nil {
+		t.Fatalf("write legacy boards.json: %v", err)
+	}
+
+	s, err := store.New(dir)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	bms, err := s.Bookmarks()
+	if err != nil {
+		t.Fatalf("Bookmarks returned error: %v", err)
+	}
+	if len(bms) != 1 || bms[0].Name != "旧ボード" || bms[0].ID != "b1" {
+		t.Fatalf("migration result got %+v", bms)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bookmarks.json")); err != nil {
+		t.Fatalf("bookmarks.json should be created: %v", err)
 	}
 }
 

@@ -30,7 +30,7 @@ func TestRetentionServiceApplyFeed(t *testing.T) {
 		{ID: "keep-recent-read", FeedID: "fA", Read: true, PublishedAt: now.Add(-2 * time.Hour), FetchedAt: recent},
 		{ID: "drop-old-read", FeedID: "fA", Read: true, PublishedAt: now.Add(-3 * time.Hour), FetchedAt: old},
 		{ID: "drop-over-limit", FeedID: "fA", Read: false, PublishedAt: now.Add(-4 * time.Hour), FetchedAt: recent},
-		{ID: "keep-actioned", FeedID: "fA", Read: true, Starred: true, PublishedAt: now.Add(-5 * time.Hour), FetchedAt: old},
+		{ID: "keep-actioned", FeedID: "fA", Read: true, BookmarkIDs: []string{"b1"}, PublishedAt: now.Add(-5 * time.Hour), FetchedAt: old},
 	}
 	_ = repo.SaveItems("fA", items)
 

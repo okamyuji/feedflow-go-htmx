@@ -49,6 +49,9 @@ func (s *Store) SaveFeed(feed domain.Feed) error {
 
 // DeleteFeed 指定IDのフィードと、それに属する全記事を削除します。
 func (s *Store) DeleteFeed(id string) error {
+	if !validStoreID(id) {
+		return fmt.Errorf("delete feed %q: %w", id, ErrInvalidID)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

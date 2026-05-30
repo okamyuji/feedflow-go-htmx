@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 // Item フィードから取得した個々の記事を表します。設計書のセクション6に対応します。
 type Item struct {
@@ -15,21 +19,37 @@ type Item struct {
 	PublishedAt time.Time `json:"published_at"` // 公開日時です
 	FetchedAt   time.Time `json:"fetched_at"`   // 取得日時です
 	Read        bool      `json:"read"`         // 既読フラグです
-	Starred     bool      `json:"starred"`      // スターフラグです
 	ReadLater   bool      `json:"read_later"`   // あとで読むフラグです
-	BoardIDs    []string  `json:"board_ids"`    // 保存先ボードのID群です
+	BookmarkIDs []string  `json:"bookmark_ids"` // 所属するブックマークのID群です
 	Tags        []string  `json:"tags"`         // タグ群です
 	Highlights  []string  `json:"highlights"`   // ハイライトした本文断片の群です
 	Note        string    `json:"note"`         // 自由記述のメモです
 }
 
+// UnmarshalJSON 旧スキーマとの後方互換を保ちながら記事をデコードします。
+// 新キー bookmark_ids を優先し、無ければ旧キー board_ids を BookmarkIDs に取り込みます。
+// 旧 starred キーは廃止済みのため読み捨てます。
+func (i *Item) UnmarshalJSON(data []byte) error {
+	type alias Item
+	aux := struct {
+		*alias
+		LegacyBoardIDs []string `json:"board_ids"`
+	}{alias: (*alias)(i)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return fmt.Errorf("failed to unmarshal item: %w", err)
+	}
+	if len(i.BookmarkIDs) == 0 && len(aux.LegacyBoardIDs) > 0 {
+		i.BookmarkIDs = aux.LegacyBoardIDs
+	}
+	return nil
+}
+
 // HasUserAction 所有者が何らかのアクションを記録した記事かどうかを返します。
-// スター、あとで読む、ボード保存、タグ付け、メモ、ハイライトのいずれかを持つと真になります。
+// ブックマーク、あとで読む、タグ付け、メモ、ハイライトのいずれかを持つと真になります。
 // 既読は閲覧の結果にすぎないためアクションには含めません。
 func (i Item) HasUserAction() bool {
-	return i.Starred ||
-		i.ReadLater ||
-		len(i.BoardIDs) > 0 ||
+	return i.ReadLater ||
+		len(i.BookmarkIDs) > 0 ||
 		len(i.Tags) > 0 ||
 		len(i.Highlights) > 0 ||
 		i.Note != ""

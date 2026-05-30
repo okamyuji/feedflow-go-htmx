@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 )
@@ -10,7 +11,7 @@ import (
 // ErrItemNotFound 指定IDの記事が見つからないときに返すエラーです。
 var ErrItemNotFound = errors.New("item not found")
 
-// ItemService 記事の既読やスターやあとで読むやタグやボードやメモの操作を担います。
+// ItemService 記事の既読やあとで読むやタグやブックマークやメモの操作を担います。
 // port.ItemService を満たします。
 type ItemService struct {
 	deps Deps
@@ -121,14 +122,6 @@ func (s *ItemService) mutateItem(feedID, itemID string, fn func(domain.Item) dom
 	return nil
 }
 
-// Star 指定記事のスター状態を設定します。
-func (s *ItemService) Star(feedID, itemID string, starred bool) error {
-	return s.mutateItem(feedID, itemID, func(item domain.Item) domain.Item {
-		item.Starred = starred
-		return item
-	})
-}
-
 // ReadLater 指定記事のあとで読む状態を設定します。
 func (s *ItemService) ReadLater(feedID, itemID string, readLater bool) error {
 	return s.mutateItem(feedID, itemID, func(item domain.Item) domain.Item {
@@ -147,12 +140,46 @@ func (s *ItemService) SetTags(feedID, itemID string, tags []string) error {
 	})
 }
 
-// SetBoards 指定記事の保存先ボードを与えた内容で置き換えます。
-func (s *ItemService) SetBoards(feedID, itemID string, boardIDs []string) error {
+// SetBookmarks 指定記事の所属ブックマークを与えた内容で置き換えます。
+func (s *ItemService) SetBookmarks(feedID, itemID string, bookmarkIDs []string) error {
 	return s.mutateItem(feedID, itemID, func(item domain.Item) domain.Item {
-		next := make([]string, len(boardIDs))
-		copy(next, boardIDs)
-		item.BoardIDs = next
+		next := make([]string, len(bookmarkIDs))
+		copy(next, bookmarkIDs)
+		item.BookmarkIDs = next
+		return item
+	})
+}
+
+// toggleBookmark 指定記事のブックマーク所属を切り替えます。所属していれば外し、無ければ追加します。
+func (s *ItemService) toggleBookmark(feedID, itemID, bookmarkID string) error {
+	return s.mutateItem(feedID, itemID, func(item domain.Item) domain.Item {
+		next := make([]string, 0, len(item.BookmarkIDs)+1)
+		found := false
+		for _, id := range item.BookmarkIDs {
+			if id == bookmarkID {
+				found = true
+				continue
+			}
+			next = append(next, id)
+		}
+		if !found {
+			next = append(next, bookmarkID)
+		}
+		item.BookmarkIDs = next
+		return item
+	})
+}
+
+// addBookmark 指定記事に重複なくブックマーク所属を追加します。
+func (s *ItemService) addBookmark(feedID, itemID, bookmarkID string) error {
+	return s.mutateItem(feedID, itemID, func(item domain.Item) domain.Item {
+		if slices.Contains(item.BookmarkIDs, bookmarkID) {
+			return item
+		}
+		next := make([]string, 0, len(item.BookmarkIDs)+1)
+		next = append(next, item.BookmarkIDs...)
+		next = append(next, bookmarkID)
+		item.BookmarkIDs = next
 		return item
 	})
 }

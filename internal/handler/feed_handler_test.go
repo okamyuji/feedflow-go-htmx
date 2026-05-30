@@ -62,14 +62,48 @@ func (s *stubItems) ListItems(feedID string) ([]domain.Item, error) {
 	}
 	return s.items[feedID], nil
 }
-func (s *stubItems) MarkRead(_, _ string, _ bool) error      { return nil }
-func (s *stubItems) MarkAllRead(_ string) error              { return nil }
-func (s *stubItems) Star(_, _ string, _ bool) error          { return nil }
-func (s *stubItems) ReadLater(_, _ string, _ bool) error     { return nil }
-func (s *stubItems) SetTags(_, _ string, _ []string) error   { return nil }
-func (s *stubItems) SetBoards(_, _ string, _ []string) error { return nil }
-func (s *stubItems) SetNote(_, _, _ string) error            { return nil }
-func (s *stubItems) AddHighlight(_, _, _ string) error       { return nil }
+func (s *stubItems) MarkRead(_, _ string, _ bool) error         { return nil }
+func (s *stubItems) MarkAllRead(_ string) error                 { return nil }
+func (s *stubItems) ReadLater(_, _ string, _ bool) error        { return nil }
+func (s *stubItems) SetTags(_, _ string, _ []string) error      { return nil }
+func (s *stubItems) SetBookmarks(_, _ string, _ []string) error { return nil }
+func (s *stubItems) SetNote(_, _, _ string) error               { return nil }
+func (s *stubItems) AddHighlight(_, _, _ string) error          { return nil }
+
+// stubBookmarks BookmarkServiceの最小スタブです。一覧と作成と所属操作を記録します。
+// IDはテスト簡素化のため名称をそのまま使います。
+type stubBookmarks struct {
+	list       []domain.Bookmark
+	created    string
+	toggled    string
+	lastFeedID string
+	lastItemID string
+}
+
+func (s *stubBookmarks) List() ([]domain.Bookmark, error) { return s.list, nil }
+func (s *stubBookmarks) Create(name string) (domain.Bookmark, error) {
+	for _, b := range s.list {
+		if b.Name == name {
+			return b, nil
+		}
+	}
+	bm := domain.Bookmark{ID: name, Name: name}
+	s.list = append(s.list, bm)
+	s.created = name
+	return bm, nil
+}
+func (s *stubBookmarks) Toggle(feedID, itemID, bookmarkID string) error {
+	s.toggled = bookmarkID
+	s.lastFeedID = feedID
+	s.lastItemID = itemID
+	return nil
+}
+func (s *stubBookmarks) CreateAndAdd(feedID, itemID, name string) (domain.Bookmark, error) {
+	bm, _ := s.Create(name)
+	s.lastFeedID = feedID
+	s.lastItemID = itemID
+	return bm, nil
+}
 
 // stubMutes MuteServiceの最小スタブです。フィルタなしで素通しします。
 type stubMutes struct {
@@ -90,6 +124,7 @@ func newAppHandler(t *testing.T, subs *stubSubscriptions, items *stubItems) *Han
 	h, err := New(Deps{
 		Subscriptions:     subs,
 		Items:             items,
+		Bookmarks:         &stubBookmarks{},
 		Mutes:             &stubMutes{},
 		Sessions:          &stubSessions{username: "owner", ok: true},
 		CSRF:              &stubCSRF{ok: true, token: "tok"},

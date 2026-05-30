@@ -1,12 +1,21 @@
 {{ define "_overlay_actions.html" }}
-<div class="reading-actions" id="overlay-actions-{{ .ID }}">
+<div
+  class="reading-actions"
+  id="overlay-actions-{{ .ID }}"
+  x-data="{ bmOpen: false, bmActive: {{ if .Bookmarked }}true{{ else }}false{{ end }} }"
+  @bm-changed-{{ .ID }}.window="bmActive = $event.detail.active"
+>
   <button
-    class="quick-btn{{ if .Starred }} is-active{{ end }}"
-    hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/star"
-    hx-vals='{"starred": "{{ if .Starred }}false{{ else }}true{{ end }}", "surface": "overlay"}'
-    hx-target="#overlay-actions-{{ .ID }}"
-    hx-swap="outerHTML"
-  >{{ if .Starred }}スター済み{{ else }}スター{{ end }}</button>
+    class="quick-btn"
+    :class="{ 'is-active': bmActive }"
+    type="button"
+    :aria-expanded="bmOpen"
+    aria-controls="overlay-bm-panel-{{ .ID }}"
+    @click="bmOpen = !bmOpen"
+    hx-get="/app/items/{{ .FeedID }}/{{ .ID }}/bookmarks"
+    hx-target="#overlay-bm-panel-{{ .ID }}"
+    hx-swap="innerHTML"
+  >🔖 <span x-text="bmActive ? 'ブックマーク済み' : 'ブックマーク'">{{ if .Bookmarked }}ブックマーク済み{{ else }}ブックマーク{{ end }}</span></button>
   <button
     class="quick-btn{{ if .ReadLater }} is-active{{ end }}"
     hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/readlater"
@@ -15,5 +24,12 @@
     hx-swap="outerHTML"
   >{{ if .ReadLater }}あとで読む済み{{ else }}あとで読む{{ end }}</button>
   <a class="quick-btn" href="{{ .Link }}" target="_blank" rel="noopener noreferrer">元記事</a>
+  <div
+    class="bookmark-panel"
+    id="overlay-bm-panel-{{ .ID }}"
+    x-show="bmOpen"
+    x-transition
+    style="display:none"
+  ></div>
 </div>
 {{ end }}

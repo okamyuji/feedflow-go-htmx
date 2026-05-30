@@ -17,6 +17,7 @@ func newFullHandler(t *testing.T, authenticated bool) *Handler {
 	h, err := New(Deps{
 		Subscriptions:     subs,
 		Items:             items,
+		Bookmarks:         &stubBookmarks{},
 		Mutes:             &stubMutes{},
 		Settings:          &stubSettings{current: domain.DefaultSettings()},
 		OPML:              &stubOPML{},
@@ -121,6 +122,7 @@ func TestRouterItemActionRequiresCSRF(t *testing.T) {
 	h, err := New(Deps{
 		Subscriptions:     subs,
 		Items:             items,
+		Bookmarks:         &stubBookmarks{},
 		Mutes:             &stubMutes{},
 		Settings:          &stubSettings{current: domain.DefaultSettings()},
 		OPML:              &stubOPML{},

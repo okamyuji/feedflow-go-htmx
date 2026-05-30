@@ -197,9 +197,9 @@ func (r *fakeRepo) SaveItems(feedID string, items []domain.Item) error {
 	return nil
 }
 
-func (r *fakeRepo) Boards() ([]domain.Board, error)       { return nil, nil }
-func (r *fakeRepo) SaveBoard(_ domain.Board) error        { return nil }
-func (r *fakeRepo) DeleteBoard(_ string) error            { return nil }
+func (r *fakeRepo) Bookmarks() ([]domain.Bookmark, error) { return nil, nil }
+func (r *fakeRepo) SaveBookmark(_ domain.Bookmark) error  { return nil }
+func (r *fakeRepo) DeleteBookmark(_ string) error         { return nil }
 func (r *fakeRepo) Filters() ([]domain.MuteFilter, error) { return nil, nil }
 func (r *fakeRepo) SaveFilter(_ domain.MuteFilter) error  { return nil }
 func (r *fakeRepo) DeleteFilter(_ string) error           { return nil }
