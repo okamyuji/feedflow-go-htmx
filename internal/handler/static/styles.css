@@ -777,6 +777,13 @@ select.field-input {
 }
 
 /* 左ペインのブックマーク展開ノードと子ノードです。 */
+/* ブックマークの親項目だけは、.tree-itemのflex(横並び)を解除して縦積みにします。
+   こうしないと親リンク行(.tree-bookmark-row)と子リスト(.tree-sub)が横に並び、
+   ラベルが折り返して子が放射状に見えてしまいます。子はtree-subのインデントで従属させます。 */
+.tree-item.tree-bookmark {
+  display: block;
+}
+
 .tree-bookmark-row {
   display: flex;
   align-items: center;
@@ -806,7 +813,10 @@ select.field-input {
 .tree-sub {
   list-style: none;
   margin: 0 0 var(--space-1);
-  padding-left: var(--space-3);
+  /* 親ラベル「ブックマーク」は先頭の開閉ボタン(▸ 1.75rem)の分だけ右にずれて始まります。
+     子(カテゴリ)の見出しをその親ラベルの真下へ揃え、ぶら下がる階層に見せるため、
+     開閉ボタン幅を含めた2remをインデントとして与えます。 */
+  padding-left: 2rem;
 }
 
 /* 未読フィード群と通常フィード群の区切り、既読先頭群と未読の区切りです。 */
