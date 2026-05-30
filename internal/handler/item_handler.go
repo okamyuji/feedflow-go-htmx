@@ -68,28 +68,29 @@ func (h *Handler) listItemsFor(r *http.Request) (items []domain.Item, unreadStar
 	return filtered, unreadStart, nil
 }
 
-// withReadHead 記事を公開日時の新しい順に並べ、直近の既読limit件を先頭に、続けて未読を並べた列を返します。
+// withReadHead 直近の既読limit件を先頭にまとめ、続けて未読を元の並びのまま並べた列を返します。
+// 未読の並びは既存の表示順を維持します。既読の先頭群だけは公開日時の新しい順(直近)で抽出します。
 // 戻り値の第2値は未読の開始位置(0始まり添字)です。既読先頭群が無い、または未読が無い場合は-1を返します。
 func withReadHead(items []domain.Item, limit int) ([]domain.Item, int) {
-	sorted := make([]domain.Item, len(items))
-	copy(sorted, items)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		if sorted[i].PublishedAt.Equal(sorted[j].PublishedAt) {
-			return sorted[i].FetchedAt.After(sorted[j].FetchedAt)
-		}
-		return sorted[i].PublishedAt.After(sorted[j].PublishedAt)
-	})
-
-	read := make([]domain.Item, 0, limit)
-	unread := make([]domain.Item, 0, len(sorted))
-	for _, it := range sorted {
+	unread := make([]domain.Item, 0, len(items))
+	read := make([]domain.Item, 0, len(items))
+	for _, it := range items {
 		if it.Read {
-			if len(read) < limit {
-				read = append(read, it)
-			}
-			continue
+			read = append(read, it)
+		} else {
+			unread = append(unread, it)
 		}
-		unread = append(unread, it)
+	}
+
+	// 既読は直近(公開日時の新しい順)を優先して先頭へ載せます。
+	sort.SliceStable(read, func(i, j int) bool {
+		if read[i].PublishedAt.Equal(read[j].PublishedAt) {
+			return read[i].FetchedAt.After(read[j].FetchedAt)
+		}
+		return read[i].PublishedAt.After(read[j].PublishedAt)
+	})
+	if len(read) > limit {
+		read = read[:limit]
 	}
 
 	out := make([]domain.Item, 0, len(read)+len(unread))
