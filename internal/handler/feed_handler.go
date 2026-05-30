@@ -25,7 +25,8 @@ func (h *Handler) buildTree() ([]feedTreeNode, error) {
 	unreadTotal := 0
 	unreadByFeed := make(map[string]int)
 	for _, it := range allItems {
-		if !it.Read {
+		// ブックマーク済みは保管済みとして未読カウントから外します。すべての未読数とフィード別バッジを一致させます。
+		if !it.Read && !isBookmarked(it) {
 			unreadTotal++
 			unreadByFeed[it.FeedID]++
 		}

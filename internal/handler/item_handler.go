@@ -31,7 +31,8 @@ func (h *Handler) listItemsFor(r *http.Request) (items []domain.Item, unreadStar
 
 	switch q.Get("view") {
 	case "read":
-		items = keepItems(items, func(it domain.Item) bool { return it.Read })
+		// ブックマーク済みは保管済みとして既読/未読管理の対象外にするため、既読ビューにも出しません。
+		items = keepItems(items, func(it domain.Item) bool { return it.Read && !isBookmarked(it) })
 	case "bookmark":
 		items = keepItems(items, func(it domain.Item) bool { return len(it.BookmarkIDs) > 0 })
 	case "readlater":
@@ -45,7 +46,8 @@ func (h *Handler) listItemsFor(r *http.Request) (items []domain.Item, unreadStar
 			items, unreadStart = withReadHead(items, readHeadLimit)
 		default:
 			// すべてやカテゴリの一覧は未読のみを残します。
-			items = keepItems(items, func(it domain.Item) bool { return !it.Read })
+			// ブックマーク済みは保管済みとして未読ストリームから外します。
+			items = keepItems(items, func(it domain.Item) bool { return !it.Read && !isBookmarked(it) })
 		}
 	}
 
@@ -121,6 +123,12 @@ func withReadHead(items []domain.Item, limit int) ([]domain.Item, int) {
 		unreadStart = len(read)
 	}
 	return out, unreadStart
+}
+
+// isBookmarked 記事がいずれかのブックマークに所属しているかどうかを返します。
+// ブックマーク済みの記事は保管済みとみなし、未読ストリームや既読ビューや未読カウントの対象から外します。
+func isBookmarked(it domain.Item) bool {
+	return len(it.BookmarkIDs) > 0
 }
 
 // keepItems 述語を満たす記事だけを順序を保って残します。
