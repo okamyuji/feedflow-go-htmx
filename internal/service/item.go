@@ -140,17 +140,34 @@ func (s *ItemService) SetTags(feedID, itemID string, tags []string) error {
 	})
 }
 
-// SetBookmarks 指定記事の所属ブックマークを与えた内容で置き換えます。
+// SetBookmarks 指定記事のラベル所属を与えた内容で置き換えます。
+// ラベルが1つでも残るなら不変条件を保つため保存状態もオンにします。
 func (s *ItemService) SetBookmarks(feedID, itemID string, bookmarkIDs []string) error {
 	return s.mutateItem(feedID, itemID, func(item domain.Item) domain.Item {
 		next := make([]string, len(bookmarkIDs))
 		copy(next, bookmarkIDs)
 		item.BookmarkIDs = next
+		if len(next) > 0 {
+			item.Bookmarked = true
+		}
 		return item
 	})
 }
 
-// toggleBookmark 指定記事のブックマーク所属を切り替えます。所属していれば外し、無ければ追加します。
+// SetBookmarked 指定記事の保存(ブックマーク)状態を設定します。
+// 保存をオンにしてもラベル所属は変えません。オフにするときは保存していないのにラベルだけ残らないよう、ラベルも空にします。
+func (s *ItemService) SetBookmarked(feedID, itemID string, bookmarked bool) error {
+	return s.mutateItem(feedID, itemID, func(item domain.Item) domain.Item {
+		item.Bookmarked = bookmarked
+		if !bookmarked {
+			item.BookmarkIDs = nil
+		}
+		return item
+	})
+}
+
+// toggleBookmark 指定記事のラベル所属を切り替えます。所属していれば外し、無ければ追加します。
+// ラベルを追加したときは不変条件を保つため保存状態もオンにします。外したときは保存状態を維持します。
 func (s *ItemService) toggleBookmark(feedID, itemID, bookmarkID string) error {
 	return s.mutateItem(feedID, itemID, func(item domain.Item) domain.Item {
 		next := make([]string, 0, len(item.BookmarkIDs)+1)
@@ -164,13 +181,14 @@ func (s *ItemService) toggleBookmark(feedID, itemID, bookmarkID string) error {
 		}
 		if !found {
 			next = append(next, bookmarkID)
+			item.Bookmarked = true
 		}
 		item.BookmarkIDs = next
 		return item
 	})
 }
 
-// addBookmark 指定記事に重複なくブックマーク所属を追加します。
+// addBookmark 指定記事に重複なくラベル所属を追加します。ラベルを付けたときは保存状態もオンにします。
 func (s *ItemService) addBookmark(feedID, itemID, bookmarkID string) error {
 	return s.mutateItem(feedID, itemID, func(item domain.Item) domain.Item {
 		if slices.Contains(item.BookmarkIDs, bookmarkID) {
@@ -180,8 +198,46 @@ func (s *ItemService) addBookmark(feedID, itemID, bookmarkID string) error {
 		next = append(next, item.BookmarkIDs...)
 		next = append(next, bookmarkID)
 		item.BookmarkIDs = next
+		item.Bookmarked = true
 		return item
 	})
+}
+
+// RemoveBookmarkIDFromAll 全フィードの全記事から指定ラベルIDを取り除きます。
+// ラベル削除時に孤児参照を残さないために使います。記事の保存状態(Bookmarked)は維持します。
+// 変更があったフィードだけを保存します。
+func (s *ItemService) RemoveBookmarkIDFromAll(bookmarkID string) error {
+	feeds, err := s.deps.Repo.Feeds()
+	if err != nil {
+		return fmt.Errorf("failed to load feeds: %w", err)
+	}
+	for _, f := range feeds {
+		items, err := s.deps.Repo.Items(f.ID)
+		if err != nil {
+			return fmt.Errorf("failed to load items for feed %s: %w", f.ID, err)
+		}
+		changed := false
+		updated := make([]domain.Item, len(items))
+		for idx, item := range items {
+			if slices.Contains(item.BookmarkIDs, bookmarkID) {
+				next := make([]string, 0, len(item.BookmarkIDs))
+				for _, id := range item.BookmarkIDs {
+					if id != bookmarkID {
+						next = append(next, id)
+					}
+				}
+				item.BookmarkIDs = next
+				changed = true
+			}
+			updated[idx] = item
+		}
+		if changed {
+			if err := s.deps.Repo.SaveItems(f.ID, updated); err != nil {
+				return fmt.Errorf("failed to save items for feed %s: %w", f.ID, err)
+			}
+		}
+	}
+	return nil
 }
 
 // SetNote 指定記事のメモを更新します。

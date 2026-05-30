@@ -14,7 +14,7 @@ func TestItemHasUserAction(t *testing.T) {
 		want bool
 	}{
 		{name: "アクションなし", item: Item{}, want: false},
-		{name: "ブックマークのみ", item: Item{BookmarkIDs: []string{"b1"}}, want: true},
+		{name: "保存済みのみ", item: Item{Bookmarked: true}, want: true},
 		{name: "あとで読むのみ", item: Item{ReadLater: true}, want: true},
 		{name: "タグのみ", item: Item{Tags: []string{"go"}}, want: true},
 		{name: "メモのみ", item: Item{Note: "あとで確認します"}, want: true},
@@ -53,6 +53,36 @@ func TestItemUnmarshalPrefersBookmarkIDs(t *testing.T) {
 	}
 	if len(it.BookmarkIDs) != 1 || it.BookmarkIDs[0] != "x" {
 		t.Fatalf("bookmark_ids を優先すべき got %v", it.BookmarkIDs)
+	}
+}
+
+// TestItemUnmarshalBookmarked bookmarked キーの明示値とキー不在(旧データ移行)の解釈を検証します。
+// 補助構造体のフィールドシャドウで明示値が落ちる回帰を防ぎます。
+func TestItemUnmarshalBookmarked(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "明示true(ラベルなし)は保存済み", raw: `{"id":"i1","bookmarked":true}`, want: true},
+		{name: "明示true(ラベルあり)は保存済み", raw: `{"id":"i1","bookmarked":true,"bookmark_ids":["x"]}`, want: true},
+		{name: "明示falseはラベルがあっても尊重する", raw: `{"id":"i1","bookmarked":false,"bookmark_ids":["x"]}`, want: false},
+		{name: "キー不在かつラベルありは移行で保存済み", raw: `{"id":"i1","bookmark_ids":["x"]}`, want: true},
+		{name: "キー不在かつラベルなしは未保存", raw: `{"id":"i1"}`, want: false},
+		{name: "キー不在かつ旧board_idsありは移行で保存済み", raw: `{"id":"i1","board_ids":["b1"]}`, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var it Item
+			if err := json.Unmarshal([]byte(tt.raw), &it); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if it.Bookmarked != tt.want {
+				t.Fatalf("Bookmarked got %v want %v (raw=%s)", it.Bookmarked, tt.want, tt.raw)
+			}
+		})
 	}
 }
 
@@ -95,7 +125,7 @@ func TestItemShouldRetain(t *testing.T) {
 		},
 		{
 			name:      "アクション済みは件数超過でも永久保持する",
-			item:      Item{BookmarkIDs: []string{"b1"}, Read: true, FetchedAt: old},
+			item:      Item{Bookmarked: true, Read: true, FetchedAt: old},
 			rankIndex: maxItems + 100,
 			want:      true,
 		},

@@ -28,8 +28,9 @@ test.describe("ブックマーク", () => {
 
     // 作成後はピッカーに名称が出てチェック済みになります。
     await expect(panel.locator(".bookmark-option", { hasText: "あとで実装する" })).toHaveClass(/is-checked/);
-    // カードに保存済み表示が出ます。
-    await expect(first.locator(".item-bookmark")).toContainText("保存済み");
+    // 保存状態はピッカーの解除ボタン(is-saved)で確認します(「保存済み」テキスト表示は廃止)。
+    await expect(panel.locator(".bookmark-save-btn")).toHaveClass(/is-saved/);
+    await expect(panel.locator(".bookmark-save-btn")).toHaveText("ブックマーク解除");
   });
 
   test("作成したブックマークが左メニューに出て絞り込める", async ({ page }) => {
@@ -38,7 +39,7 @@ test.describe("ブックマーク", () => {
     const input = first.locator(".bookmark-panel .bookmark-create-input");
     await input.fill("Go の知見");
     await input.press("Enter");
-    await expect(first.locator(".item-bookmark")).toContainText("保存済み");
+    await expect(first.locator(".bookmark-panel .bookmark-save-btn")).toHaveClass(/is-saved/);
 
     // 左メニューは次の遷移でブックマークを反映するため再読込します。
     await page.reload();
@@ -68,7 +69,7 @@ test.describe("ブックマーク", () => {
     await expect(actions.locator("button.is-active")).toContainText("ブックマーク済み");
   });
 
-  test("既存ブックマークへのトグルで所属を切り替えられる", async ({ page }) => {
+  test("既存ラベルへのトグルで所属を切り替えられる(保存は維持)", async ({ page }) => {
     const first = page.locator(".item-list li.item-card").first();
     await first.locator(".bookmark-btn").click();
     const input = first.locator(".bookmark-panel .bookmark-create-input");
@@ -77,9 +78,92 @@ test.describe("ブックマーク", () => {
     const option = first.locator(".bookmark-panel .bookmark-option", { hasText: "読み物" });
     await expect(option).toHaveClass(/is-checked/);
 
-    // もう一度トグルすると外れ、保存済み表示が消えます。
+    // もう一度トグルするとラベルのチェックは外れます。
     await option.click();
     await expect(option).not.toHaveClass(/is-checked/);
-    await expect(first.locator(".item-bookmark")).not.toContainText("保存済み");
+    // ただし保存(ブックマーク)状態は維持されます(保存とラベルの分離)。
+    await expect(first.locator(".bookmark-panel .bookmark-save-btn")).toHaveClass(/is-saved/);
+  });
+
+  test("ラベルを付けずにブックマーク保存できる", async ({ page }) => {
+    const first = page.locator(".item-list li.item-card").first();
+    await first.locator(".bookmark-btn").click();
+    const panel = first.locator(".bookmark-panel");
+    // ラベルを作らず、保存トグルだけで保存します。
+    await expect(panel.locator(".bookmark-save-btn")).toHaveText("ブックマークに保存");
+    await panel.locator(".bookmark-save-btn").click();
+    await expect(panel.locator(".bookmark-save-btn")).toHaveClass(/is-saved/);
+
+    // ラベル0件でも view=bookmark に保存記事が出ます。
+    await page.reload();
+    await page.locator(".tree-bookmark .tree-link", { hasText: "ブックマーク" }).first().click();
+    await expect(page.locator(".item-list-title")).toContainText("ブックマーク");
+    await expect(page.locator(".item-list li.item-card")).toHaveCount(1);
+  });
+
+  test("ブックマークビューで解除すると一覧から消える", async ({ page }) => {
+    const first = page.locator(".item-list li.item-card").first();
+    const savedTitle = await first.locator(".item-title").innerText();
+    await first.locator(".bookmark-btn").click();
+    await first.locator(".bookmark-panel .bookmark-save-btn").click();
+    await expect(first.locator(".bookmark-panel .bookmark-save-btn")).toHaveClass(/is-saved/);
+
+    // ブックマークビューへ遷移すると保存記事が1件出ます。
+    await page.reload();
+    await page.locator(".tree-bookmark .tree-link", { hasText: "ブックマーク" }).first().click();
+    await expect(page.locator(".item-list li.item-card")).toHaveCount(1);
+
+    // ブックマークボタンの解除で、その記事がビューから消えます(記事内の解除ボタンを代用)。
+    const card = page.locator(".item-list li.item-card", { hasText: savedTitle });
+    await card.locator(".bookmark-btn").click();
+    await card.locator(".bookmark-panel .bookmark-save-btn", { hasText: "ブックマーク解除" }).click();
+    await expect(page.locator(".item-list li.item-card", { hasText: savedTitle })).toHaveCount(0);
+  });
+
+  test("ラベルを左メニューから名前変更できる", async ({ page }) => {
+    const first = page.locator(".item-list li.item-card").first();
+    await first.locator(".bookmark-btn").click();
+    const input = first.locator(".bookmark-panel .bookmark-create-input");
+    await input.fill("リネーム前");
+    await input.press("Enter");
+    await expect(first.locator(".bookmark-panel .bookmark-save-btn")).toHaveClass(/is-saved/);
+
+    await page.reload();
+    await page.locator(".tree-bookmark .tree-disclosure").click();
+    const childLi = page.locator(".tree-sub li.tree-bookmark-item", { hasText: "リネーム前" });
+    await childLi.locator(".tree-rename").click();
+    const renameInput = childLi.locator(".tree-rename-input");
+    await expect(renameInput).toBeVisible();
+    await renameInput.fill("リネーム後");
+    await renameInput.press("Enter");
+
+    // ツリーが再描画され、新しい名称になります。
+    await expect(page.locator("#tree-pane")).toContainText("リネーム後");
+    await expect(page.locator("#tree-pane")).not.toContainText("リネーム前");
+  });
+
+  test("ラベルを左メニューから削除しても保存記事は残る", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+
+    const first = page.locator(".item-list li.item-card").first();
+    const savedTitle = await first.locator(".item-title").innerText();
+    await first.locator(".bookmark-btn").click();
+    const input = first.locator(".bookmark-panel .bookmark-create-input");
+    await input.fill("削除するラベル");
+    await input.press("Enter");
+    await expect(first.locator(".bookmark-panel .bookmark-save-btn")).toHaveClass(/is-saved/);
+
+    await page.reload();
+    await page.locator(".tree-bookmark .tree-disclosure").click();
+    const childLi = page.locator(".tree-sub li.tree-bookmark-item", { hasText: "削除するラベル" });
+    // ラベル削除は専用クラスtree-label-delete(購読解除のtree-unsubscribeとは別)です。
+    await childLi.locator(".tree-label-delete").click();
+
+    // ラベルはツリーから消えます。
+    await expect(page.locator("#tree-pane")).not.toContainText("削除するラベル");
+
+    // ただし保存した記事自体は view=bookmark に残ります。
+    await page.locator(".tree-bookmark .tree-link", { hasText: "ブックマーク" }).first().click();
+    await expect(page.locator(".item-list li.item-card", { hasText: savedTitle })).toHaveCount(1);
   });
 });

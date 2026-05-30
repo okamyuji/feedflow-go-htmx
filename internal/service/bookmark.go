@@ -11,6 +11,12 @@ import (
 // ErrBookmarkNameRequired ブックマーク名が空のときに返すエラーです。
 var ErrBookmarkNameRequired = errors.New("bookmark name is required")
 
+// ErrBookmarkNameTaken 別のブックマークが同名で既に存在するときに返すエラーです。リネームの重複を防ぎます。
+var ErrBookmarkNameTaken = errors.New("bookmark name already exists")
+
+// ErrBookmarkNotFound 指定IDのブックマークが存在しないときに返すエラーです。リネーム対象の不在判定に使います。
+var ErrBookmarkNotFound = errors.New("bookmark not found")
+
 // BookmarkService 名称付きブックマークの一覧と作成、記事の所属操作を担います。
 // port.BookmarkService を満たします。
 type BookmarkService struct {
@@ -71,4 +77,47 @@ func (s *BookmarkService) CreateAndAdd(feedID, itemID, name string) (domain.Book
 		return domain.Bookmark{}, err
 	}
 	return bm, nil
+}
+
+// Rename 指定IDのラベル名を変更します。前後空白は除去します。
+// 空名は ErrBookmarkNameRequired を返します。別のラベルが同名なら ErrBookmarkNameTaken を返します。
+// 対象IDが存在しない場合は ErrBookmarkNotFound をラップして返します。
+func (s *BookmarkService) Rename(id, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ErrBookmarkNameRequired
+	}
+	bms, err := s.deps.Repo.Bookmarks()
+	if err != nil {
+		return fmt.Errorf("failed to load bookmarks: %w", err)
+	}
+	found := false
+	for _, b := range bms {
+		if b.ID != id && b.Name == name {
+			return ErrBookmarkNameTaken
+		}
+		if b.ID == id {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("bookmark %q: %w", id, ErrBookmarkNotFound)
+	}
+	if err := s.deps.Repo.SaveBookmark(domain.Bookmark{ID: id, Name: name}); err != nil {
+		return fmt.Errorf("failed to rename bookmark: %w", err)
+	}
+	return nil
+}
+
+// Delete 指定IDのラベルを削除します。
+// 先に全記事から当該ラベルの所属を取り除いて孤児参照を防ぎ、その後にラベル自体を削除します。
+// 記事の保存状態(Bookmarked)は維持されるため、ラベルを消しても保存した記事はブックマークに残ります。
+func (s *BookmarkService) Delete(id string) error {
+	if err := s.items.RemoveBookmarkIDFromAll(id); err != nil {
+		return fmt.Errorf("failed to detach bookmark %q from items: %w", id, err)
+	}
+	if err := s.deps.Repo.DeleteBookmark(id); err != nil {
+		return fmt.Errorf("failed to delete bookmark %q: %w", id, err)
+	}
+	return nil
 }

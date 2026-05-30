@@ -76,7 +76,7 @@ type itemView struct {
 	Author      string        // 著者名です
 	PublishedAt string        // JST整形済みの公開日時です
 	Read        bool          // 既読かどうかです
-	Bookmarked  bool          // いずれかのブックマークに所属しているかどうかです
+	Bookmarked  bool          // ブックマーク(保存)済みかどうかです
 	ReadLater   bool          // あとで読む済みかどうかです
 	HasContent  bool          // 本文を持つかどうかです。本文の無い外部リンクはオーバーレイを開かず元記事を直接開きます
 	UnreadStart bool          // 単一フィード表示で既読先頭群の直後、未読の開始位置かどうかです。区切り線描画に使います

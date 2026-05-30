@@ -35,24 +35,30 @@ type ItemService interface {
 	ReadLater(feedID, itemID string, readLater bool) error
 	// SetTags 指定記事のタグを更新します。
 	SetTags(feedID, itemID string, tags []string) error
-	// SetBookmarks 指定記事の所属ブックマークを与えた内容で置き換えます。
+	// SetBookmarks 指定記事のラベル所属を与えた内容で置き換えます。ラベルが残れば保存状態も保たれます。
 	SetBookmarks(feedID, itemID string, bookmarkIDs []string) error
+	// SetBookmarked 指定記事の保存(ブックマーク)状態を設定します。オフにするとラベル所属も外れます。
+	SetBookmarked(feedID, itemID string, bookmarked bool) error
 	// SetNote 指定記事のメモを更新します。
 	SetNote(feedID, itemID, note string) error
 	// AddHighlight 指定記事にハイライトを追加します。
 	AddHighlight(feedID, itemID, highlight string) error
 }
 
-// BookmarkService 名称付きブックマークの一覧と作成、記事の所属操作を担う抽象です。
+// BookmarkService 名称付きラベルの一覧と作成、記事の所属操作、リネーム、削除を担う抽象です。
 type BookmarkService interface {
-	// List 全ブックマークを返します。
+	// List 全ラベルを返します。
 	List() ([]domain.Bookmark, error)
-	// Create 指定名のブックマークを作成して返します。同名が既存ならそれを返します。
+	// Create 指定名のラベルを作成して返します。同名が既存ならそれを返します。
 	Create(name string) (domain.Bookmark, error)
-	// Toggle 指定記事のブックマーク所属を切り替えます。
+	// Toggle 指定記事のラベル所属を切り替えます。
 	Toggle(feedID, itemID, bookmarkID string) error
-	// CreateAndAdd 指定名のブックマークを用意し、指定記事を所属させて返します。
+	// CreateAndAdd 指定名のラベルを用意し、指定記事を所属させて返します。
 	CreateAndAdd(feedID, itemID, name string) (domain.Bookmark, error)
+	// Rename 指定IDのラベル名を変更します。
+	Rename(id, name string) error
+	// Delete 指定IDのラベルを削除します。所属記事の保存状態は維持されます。
+	Delete(id string) error
 }
 
 // RetentionService 保持ポリシーの適用を担う抽象です。設計書のセクション4.1に対応します。

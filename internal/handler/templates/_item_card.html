@@ -24,7 +24,6 @@
     <p class="item-summary">{{ .Summary }}</p>
     <div class="item-meta">
       <time>{{ .PublishedAt }}</time>
-      <span class="item-bookmark" id="bm-indicator-{{ .ID }}">{{ if .Bookmarked }}🔖 保存済み{{ end }}</span>
     </div>
   </a>
   <div class="item-quick">
@@ -37,7 +36,7 @@
       hx-get="/app/items/{{ .FeedID }}/{{ .ID }}/bookmarks"
       hx-target="#bm-panel-{{ .ID }}"
       hx-swap="innerHTML"
-    >🔖 ブックマーク</button>
+    >ブックマーク</button>
     <button
       class="quick-btn"
       hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/read"

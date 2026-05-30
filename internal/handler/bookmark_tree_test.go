@@ -34,7 +34,7 @@ func TestBookmarkChildSelectedKeepsParentOpen(t *testing.T) {
 	t.Parallel()
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
 	items := &stubItems{items: map[string][]domain.Item{
-		"f1": {{ID: "i1", FeedID: "f1", Title: "記事1", BookmarkIDs: []string{"b1"}}},
+		"f1": {{ID: "i1", FeedID: "f1", Title: "記事1", Bookmarked: true, BookmarkIDs: []string{"b1"}}},
 	}}
 	h := newBookmarkTreeHandler(t, subs, items, []domain.Bookmark{{ID: "b1", Name: "ArgoCD"}})
 	req := httptest.NewRequest(http.MethodGet, "/app/items?bookmark=b1", nil)
@@ -59,7 +59,7 @@ func TestBookmarkChildIsNotMarkedActiveWhenParentSelected(t *testing.T) {
 	t.Parallel()
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
 	items := &stubItems{items: map[string][]domain.Item{
-		"f1": {{ID: "i1", FeedID: "f1", BookmarkIDs: []string{"b1"}}},
+		"f1": {{ID: "i1", FeedID: "f1", Bookmarked: true, BookmarkIDs: []string{"b1"}}},
 	}}
 	h := newBookmarkTreeHandler(t, subs, items, []domain.Bookmark{{ID: "b1", Name: "ArgoCD"}})
 	req := httptest.NewRequest(http.MethodGet, "/app/items?view=bookmark", nil)
@@ -82,7 +82,7 @@ func TestItemCardWithoutContentOpensOriginalDirectly(t *testing.T) {
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
 	items := &stubItems{items: map[string][]domain.Item{
 		"f1": {
-			{ID: "ext", FeedID: "f1", Title: "外部リンク", Link: "https://example.com/a", Content: "", BookmarkIDs: []string{"b1"}},
+			{ID: "ext", FeedID: "f1", Title: "外部リンク", Link: "https://example.com/a", Content: "", Bookmarked: true, BookmarkIDs: []string{"b1"}},
 		},
 	}}
 	h := newBookmarkTreeHandler(t, subs, items, []domain.Bookmark{{ID: "b1", Name: "ArgoCD"}})

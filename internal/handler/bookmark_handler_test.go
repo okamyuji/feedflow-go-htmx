@@ -30,7 +30,7 @@ func newBookmarkHandler(t *testing.T, items *stubItems, bookmarks *stubBookmarks
 func TestBookmarkPickerRendersOptions(t *testing.T) {
 	t.Parallel()
 	items := &stubItems{items: map[string][]domain.Item{
-		"f1": {{ID: "i1", FeedID: "f1", BookmarkIDs: []string{"読み物"}}},
+		"f1": {{ID: "i1", FeedID: "f1", Bookmarked: true, BookmarkIDs: []string{"読み物"}}},
 	}}
 	bookmarks := &stubBookmarks{list: []domain.Bookmark{{ID: "読み物", Name: "読み物"}, {ID: "Go", Name: "Go"}}}
 	h := newBookmarkHandler(t, items, bookmarks)
@@ -53,8 +53,8 @@ func TestBookmarkPickerRendersOptions(t *testing.T) {
 	if !strings.Contains(body, "is-checked") {
 		t.Fatalf("所属済みのブックマークはチェック表示されるべき: %q", body)
 	}
-	if !strings.Contains(body, "保存済み") {
-		t.Fatalf("所属があればカードの保存済み表示をOOB更新すべき: %q", body)
+	if !strings.Contains(body, "ブックマーク解除") {
+		t.Fatalf("保存済みの記事はピッカーに解除ボタンを出すべき: %q", body)
 	}
 }
 
