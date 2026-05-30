@@ -50,6 +50,9 @@ func TestFeedSelectSwapsTreePaneOOB(t *testing.T) {
 
 	h.itemList(rec, req)
 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
 	body := rec.Body.String()
 	if !strings.Contains(body, `id="tree-pane"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
 		t.Fatalf("フィード選択は左ペインをOOBで差し替えるべきです(JSのスクロール復元の前提): %q", body)
@@ -69,6 +72,9 @@ func TestUnsubscribeReplacesTreePane(t *testing.T) {
 
 	h.feedUnsubscribe(rec, req)
 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
 	if !strings.Contains(rec.Body.String(), `id="tree-pane"`) {
 		t.Fatalf("購読解除は左ペイン id=\"tree-pane\" を差し替えるべきです: %q", rec.Body.String())
 	}
