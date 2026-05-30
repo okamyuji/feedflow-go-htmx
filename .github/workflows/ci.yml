@@ -19,6 +19,7 @@ jobs:
   pre-commit:
     name: pre-commit (quality-gate + gitleaks)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       GITLEAKS_VERSION: "8.30.1"
     steps:
@@ -68,6 +69,7 @@ jobs:
   e2e:
     name: e2e (Playwright)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
