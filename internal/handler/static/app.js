@@ -67,10 +67,15 @@ function registerFeedflow() {
       } else if (localStorage.getItem("feedflow-sidebar") === "closed") {
         this.sidebarOpen = false;
       }
-      // 画面幅が変わったらモバイル判定を更新し、デスクトップへ戻ったらドロワーを開いた状態へ戻します。
+      // 画面幅が変わったらモバイル判定を更新します。
+      // モバイルへ入るとドロワーは閉、デスクトップへ戻ると保存済みの開閉設定を尊重します。
       mql.addEventListener("change", (e) => {
         this.isMobile = e.matches;
-        this.sidebarOpen = !e.matches;
+        if (e.matches) {
+          this.sidebarOpen = false;
+        } else {
+          this.sidebarOpen = localStorage.getItem("feedflow-sidebar") !== "closed";
+        }
       });
       // モバイルでツリーのリンクをタップして本文が入れ替わったらドロワーを閉じます。
       const main = document.getElementById("main-pane");

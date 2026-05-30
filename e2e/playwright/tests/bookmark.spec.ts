@@ -54,6 +54,20 @@ test.describe("ブックマーク", () => {
     await expect(page.locator(".item-list li.item-card")).toHaveCount(1);
   });
 
+  test("オーバーレイでブックマークするとボタン表示が即時同期する", async ({ page }) => {
+    await page.click(".item-list li.item-card a.item-open >> nth=0");
+    await expect(page.locator("#reading-overlay")).toBeVisible();
+
+    const actions = page.locator(".reading-actions");
+    await actions.getByRole("button", { name: /ブックマーク/ }).click();
+    const input = actions.locator(".bookmark-create-input");
+    await input.fill("保存リスト");
+    await input.press("Enter");
+
+    // ピッカーのx-initがイベントを発火し、上部ボタンがブックマーク済みへ同期します。
+    await expect(actions.locator("button.is-active")).toContainText("ブックマーク済み");
+  });
+
   test("既存ブックマークへのトグルで所属を切り替えられる", async ({ page }) => {
     const first = page.locator(".item-list li.item-card").first();
     await first.locator(".bookmark-btn").click();

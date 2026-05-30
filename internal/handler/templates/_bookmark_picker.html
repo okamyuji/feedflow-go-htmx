@@ -1,5 +1,9 @@
 {{ define "_bookmark_picker.html" }}
-<div class="bookmark-picker" id="bookmark-picker-{{ .ItemID }}">
+<div
+  class="bookmark-picker"
+  id="bookmark-picker-{{ .ItemID }}"
+  x-init="$dispatch('bm-changed-{{ .ItemID }}', { active: {{ if .AnyChecked }}true{{ else }}false{{ end }} })"
+>
   <ul class="bookmark-options">
     {{ range .Options }}
     <li>

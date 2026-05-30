@@ -1,14 +1,20 @@
 {{ define "_overlay_actions.html" }}
-<div class="reading-actions" id="overlay-actions-{{ .ID }}" x-data="{ bmOpen: false }">
+<div
+  class="reading-actions"
+  id="overlay-actions-{{ .ID }}"
+  x-data="{ bmOpen: false, bmActive: {{ if .Bookmarked }}true{{ else }}false{{ end }} }"
+  @bm-changed-{{ .ID }}.window="bmActive = $event.detail.active"
+>
   <button
-    class="quick-btn{{ if .Bookmarked }} is-active{{ end }}"
+    class="quick-btn"
+    :class="{ 'is-active': bmActive }"
     type="button"
     :aria-expanded="bmOpen"
     @click="bmOpen = !bmOpen"
     hx-get="/app/items/{{ .FeedID }}/{{ .ID }}/bookmarks"
     hx-target="#overlay-bm-panel-{{ .ID }}"
     hx-swap="innerHTML"
-  >🔖 {{ if .Bookmarked }}ブックマーク済み{{ else }}ブックマーク{{ end }}</button>
+  >🔖 <span x-text="bmActive ? 'ブックマーク済み' : 'ブックマーク'">{{ if .Bookmarked }}ブックマーク済み{{ else }}ブックマーク{{ end }}</span></button>
   <button
     class="quick-btn{{ if .ReadLater }} is-active{{ end }}"
     hx-post="/app/items/{{ .FeedID }}/{{ .ID }}/readlater"
