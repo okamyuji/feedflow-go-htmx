@@ -1,10 +1,52 @@
 {{ define "_tree_node.html" }}
+{{ if eq .Kind "bookmark" }}
+<li class="tree-item tree-bookmark{{ if .Active }} tree-active{{ end }}" x-data="{ open: {{ if .Active }}true{{ else }}false{{ end }} }">
+  <div class="tree-bookmark-row">
+    <button
+      class="tree-disclosure"
+      type="button"
+      @click="open = !open"
+      :aria-expanded="open"
+      aria-label="ブックマークの開閉"
+    ><span class="tree-caret" :class="{ 'is-open': open }">▸</span></button>
+    <a
+      class="tree-link"
+      {{ if .Active }}aria-current="page"{{ end }}
+      href="/app/items?view=bookmark"
+      hx-get="/app/items?view=bookmark"
+      hx-target="#main-pane"
+      hx-push-url="true"
+    >
+      <span class="tree-label">{{ .Label }}</span>
+    </a>
+  </div>
+  {{ if .Children }}
+  <ul class="tree-sub" x-show="open" x-transition style="display:none">
+    {{ range .Children }}
+    <li class="tree-item tree-bookmark-item{{ if .Active }} tree-active{{ end }}">
+      <a
+        class="tree-link"
+        {{ if .Active }}aria-current="page"{{ end }}
+        href="/app/items?bookmark={{ .ID }}"
+        hx-get="/app/items?bookmark={{ .ID }}"
+        hx-target="#main-pane"
+        hx-push-url="true"
+      >
+        <span class="tree-label">{{ .Label }}</span>
+        {{ if gt .ItemCount 0 }}<span class="tree-badge">{{ .ItemCount }}</span>{{ end }}
+      </a>
+    </li>
+    {{ end }}
+  </ul>
+  {{ end }}
+</li>
+{{ else }}
 <li class="tree-item tree-{{ .Kind }}{{ if .HasError }} tree-error{{ end }}{{ if .Active }} tree-active{{ end }}"{{ if eq .Kind "feed" }} data-label="{{ .Label }}"{{ end }}>
   <a
     class="tree-link"
     {{ if .Active }}aria-current="page"{{ end }}
-    href="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else if eq .Kind "board" }}board={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
-    hx-get="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else if eq .Kind "board" }}board={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
+    href="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
+    hx-get="/app/items?{{ if eq .Kind "feed" }}feed={{ .ID }}{{ else if eq .Kind "category" }}category={{ .ID }}{{ else }}view={{ .Kind }}{{ end }}"
     hx-target="#main-pane"
     hx-push-url="true"
   >
@@ -24,4 +66,6 @@
   >×</button>
   {{ end }}
 </li>
+{{ if .UnreadGroupEnd }}<li class="tree-feed-divider" aria-hidden="true"></li>{{ end }}
+{{ end }}
 {{ end }}

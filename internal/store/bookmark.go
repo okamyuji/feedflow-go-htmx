@@ -7,48 +7,48 @@ import (
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 )
 
-// Boards全ボードを内部状態と共有しないコピーで返します。
-func (s *Store) Boards() ([]domain.Board, error) {
+// Bookmarks 全ブックマークを内部状態と共有しないコピーで返します。
+func (s *Store) Bookmarks() ([]domain.Bookmark, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return slices.Clone(s.boards), nil
+	return slices.Clone(s.bookmarks), nil
 }
 
-// SaveBoard ボードを新規追加または更新し、boards.jsonをアトミックに書き出します。
-func (s *Store) SaveBoard(board domain.Board) error {
+// SaveBookmark ブックマークを新規追加または更新し、bookmarks.jsonをアトミックに書き出します。
+func (s *Store) SaveBookmark(bookmark domain.Bookmark) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	prev := slices.Clone(s.boards)
-	idx := slices.IndexFunc(s.boards, func(b domain.Board) bool { return b.ID == board.ID })
+	prev := slices.Clone(s.bookmarks)
+	idx := slices.IndexFunc(s.bookmarks, func(b domain.Bookmark) bool { return b.ID == bookmark.ID })
 	if idx >= 0 {
-		s.boards[idx] = board
+		s.bookmarks[idx] = bookmark
 	} else {
-		s.boards = append(s.boards, board)
+		s.bookmarks = append(s.bookmarks, bookmark)
 	}
 
-	if err := writeJSONAtomic(s.path(boardsFile), s.boards); err != nil {
-		s.boards = prev
-		return fmt.Errorf("failed to save board %q: %w", board.ID, err)
+	if err := writeJSONAtomic(s.path(bookmarksFile), s.bookmarks); err != nil {
+		s.bookmarks = prev
+		return fmt.Errorf("failed to save bookmark %q: %w", bookmark.ID, err)
 	}
 	return nil
 }
 
-// DeleteBoard 指定IDのボードを削除し、boards.jsonをアトミックに書き出します。
-func (s *Store) DeleteBoard(id string) error {
+// DeleteBookmark 指定IDのブックマークを削除し、bookmarks.jsonをアトミックに書き出します。
+func (s *Store) DeleteBookmark(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	idx := slices.IndexFunc(s.boards, func(b domain.Board) bool { return b.ID == id })
+	idx := slices.IndexFunc(s.bookmarks, func(b domain.Bookmark) bool { return b.ID == id })
 	if idx < 0 {
-		return fmt.Errorf("board %q: %w", id, ErrNotFound)
+		return fmt.Errorf("bookmark %q: %w", id, ErrNotFound)
 	}
 
-	prev := slices.Clone(s.boards)
-	s.boards = slices.Delete(s.boards, idx, idx+1)
-	if err := writeJSONAtomic(s.path(boardsFile), s.boards); err != nil {
-		s.boards = prev
-		return fmt.Errorf("failed to delete board %q: %w", id, err)
+	prev := slices.Clone(s.bookmarks)
+	s.bookmarks = slices.Delete(s.bookmarks, idx, idx+1)
+	if err := writeJSONAtomic(s.path(bookmarksFile), s.bookmarks); err != nil {
+		s.bookmarks = prev
+		return fmt.Errorf("failed to delete bookmark %q: %w", id, err)
 	}
 	return nil
 }

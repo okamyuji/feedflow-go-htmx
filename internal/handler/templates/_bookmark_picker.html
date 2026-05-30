@@ -1,0 +1,52 @@
+{{ define "_bookmark_picker.html" }}
+<div
+  class="bookmark-picker"
+  id="bookmark-picker-{{ .ItemID }}"
+  x-init="$dispatch('bm-changed-{{ .ItemID }}', { active: {{ if .AnyChecked }}true{{ else }}false{{ end }} })"
+>
+  <ul class="bookmark-options">
+    {{ range .Options }}
+    <li>
+      <button
+        type="button"
+        class="bookmark-option{{ if .Checked }} is-checked{{ end }}"
+        aria-pressed="{{ if .Checked }}true{{ else }}false{{ end }}"
+        hx-post="/app/items/{{ $.FeedID }}/{{ $.ItemID }}/bookmarks/toggle"
+        hx-vals='{"bookmark": "{{ .ID }}"}'
+        hx-target="#bookmark-picker-{{ $.ItemID }}"
+        hx-swap="outerHTML"
+      >
+        <span class="bookmark-check" aria-hidden="true">{{ if .Checked }}✓{{ end }}</span>
+        <span class="bookmark-name">{{ .Name }}</span>
+      </button>
+    </li>
+    {{ else }}
+    <li class="bookmark-empty">まだブックマークはありません</li>
+    {{ end }}
+  </ul>
+  <form
+    class="bookmark-create"
+    hx-post="/app/bookmarks"
+    hx-target="#bookmark-picker-{{ .ItemID }}"
+    hx-swap="outerHTML"
+  >
+    <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+    <input type="hidden" name="feed" value="{{ .FeedID }}">
+    <input type="hidden" name="item" value="{{ .ItemID }}">
+    <input
+      class="bookmark-create-input"
+      type="text"
+      name="name"
+      placeholder="＋ 新しい名称を作成"
+      aria-label="新しいブックマーク名"
+      autocomplete="off"
+      required
+    >
+  </form>
+  <span
+    class="item-bookmark"
+    id="bm-indicator-{{ .ItemID }}"
+    hx-swap-oob="true"
+  >{{ if .AnyChecked }}🔖 保存済み{{ end }}</span>
+</div>
+{{ end }}

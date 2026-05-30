@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
@@ -15,9 +16,21 @@ func (h *Handler) healthz(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-// favicon ブラウザのfavicon要求に空応答を返し、ログインや初回セットアップ画面での404を防ぎます。
+// faviconSVG 落ち着いた青系のRSSグリフを描いたファビコンです。白黒を避け、ブランドに合わせた色付きにします。
+const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
+	`<rect width="32" height="32" rx="7" fill="rgb(74,120,196)"/>` +
+	`<circle cx="10" cy="22" r="2.6" fill="white"/>` +
+	`<path d="M8 8a16 16 0 0 1 16 16" fill="none" stroke="white" stroke-width="3.2" stroke-linecap="round"/>` +
+	`<path d="M8 14a10 10 0 0 1 10 10" fill="none" stroke="white" stroke-width="3.2" stroke-linecap="round"/>` +
+	`</svg>`
+
+// favicon 色付きのSVGファビコンを返します。ブラウザの/favicon.ico要求と<link>の両方から利用します。
 func (h *Handler) favicon(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusNoContent)
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	if _, err := w.Write([]byte(faviconSVG)); err != nil {
+		slog.Error("failed to write favicon", "error", err)
+	}
 }
 
 // rootIndex ルートパスへのアクセスをアプリ画面へ誘導します。未認証なら/loginへ、オーナー未登録なら/setupへ順に転送されます。
@@ -33,14 +46,18 @@ func (h *Handler) appPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	items, err := h.listItemsFor(r)
+	items, unreadStart, err := h.listItemsFor(r)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	views := make([]itemView, 0, len(items))
-	for _, it := range items {
-		views = append(views, toItemView(it))
+	for i, it := range items {
+		v := toItemView(it)
+		if i == unreadStart {
+			v.UnreadStart = true
+		}
+		views = append(views, v)
 	}
 	settings, err := h.deps.Settings.Get()
 	if err != nil {
@@ -89,15 +106,16 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("GET /app/items/{feedID}/{itemID}", h.requireAuth(http.HandlerFunc(h.itemOverlay)))
 	mux.Handle("GET /app/settings", h.requireAuth(http.HandlerFunc(h.settingsPage)))
 	mux.Handle("GET /app/opml/export", h.requireAuth(http.HandlerFunc(h.opmlExport)))
+	mux.Handle("GET /app/items/{feedID}/{itemID}/bookmarks", h.requireAuth(http.HandlerFunc(h.bookmarkPicker)))
 
 	// 認証とCSRFが必要な状態変更系ルートです。
 	mux.Handle("POST /app/feeds", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedSubscribe))))
 	mux.Handle("DELETE /app/feeds/{feedID}", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedUnsubscribe))))
 	mux.Handle("POST /app/items/markall", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemMarkAll))))
 	mux.Handle("POST /app/items/{feedID}/{itemID}/read", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemMarkRead))))
-	mux.Handle("POST /app/items/{feedID}/{itemID}/star", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemStar))))
 	mux.Handle("POST /app/items/{feedID}/{itemID}/readlater", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemReadLater))))
-	mux.Handle("POST /app/items/{feedID}/{itemID}/boards", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemSetBoards))))
+	mux.Handle("POST /app/items/{feedID}/{itemID}/bookmarks/toggle", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkToggle))))
+	mux.Handle("POST /app/bookmarks", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkCreate))))
 	mux.Handle("POST /app/settings", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.settingsUpdate))))
 	mux.Handle("POST /app/opml/import", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.opmlImport))))
 
