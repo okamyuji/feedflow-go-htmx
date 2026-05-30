@@ -20,7 +20,8 @@ type Item struct {
 	FetchedAt   time.Time `json:"fetched_at"`   // 取得日時です
 	Read        bool      `json:"read"`         // 既読フラグです
 	ReadLater   bool      `json:"read_later"`   // あとで読むフラグです
-	BookmarkIDs []string  `json:"bookmark_ids"` // 所属するブックマークのID群です
+	Bookmarked  bool      `json:"bookmarked"`   // ブックマーク(保存)済みかどうかです。ラベル所属とは独立した保存状態の真実です
+	BookmarkIDs []string  `json:"bookmark_ids"` // 所属するラベル(名称コレクション)のID群です。空でも保存状態は維持されます
 	Tags        []string  `json:"tags"`         // タグ群です
 	Highlights  []string  `json:"highlights"`   // ハイライトした本文断片の群です
 	Note        string    `json:"note"`         // 自由記述のメモです
@@ -29,11 +30,19 @@ type Item struct {
 // UnmarshalJSON 旧スキーマとの後方互換を保ちながら記事をデコードします。
 // 新キー bookmark_ids を優先し、無ければ旧キー board_ids を BookmarkIDs に取り込みます。
 // 旧 starred キーは廃止済みのため読み捨てます。
+// 保存とラベルを分離する前の旧データには bookmarked キーが無く、ラベル所属の有無で保存を表していました。
+// そのため bookmarked キーが無く(=RawBookmarkedがnil)かつラベルを持つ記事は保存済みとみなして移行します。
+// bookmarked が明示的に書かれている新データはその値を尊重します(falseとキー不在を区別するためポインタで受けます)。
+//
+// 注意: 補助構造体のアウター側 RawBookmarked と埋め込み alias.Bookmarked は同じ json タグ "bookmarked" を持ちます。
+// encoding/json は同名タグが競合すると両方を無視するため、埋め込み側の i.Bookmarked には反映されません。
+// そこでデコード後に RawBookmarked の値を明示的に i.Bookmarked へ写します。
 func (i *Item) UnmarshalJSON(data []byte) error {
 	type alias Item
 	aux := struct {
 		*alias
 		LegacyBoardIDs []string `json:"board_ids"`
+		RawBookmarked  *bool    `json:"bookmarked"`
 	}{alias: (*alias)(i)}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return fmt.Errorf("failed to unmarshal item: %w", err)
@@ -41,15 +50,22 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 	if len(i.BookmarkIDs) == 0 && len(aux.LegacyBoardIDs) > 0 {
 		i.BookmarkIDs = aux.LegacyBoardIDs
 	}
+	switch {
+	case aux.RawBookmarked != nil:
+		i.Bookmarked = *aux.RawBookmarked
+	case len(i.BookmarkIDs) > 0:
+		i.Bookmarked = true
+	}
 	return nil
 }
 
 // HasUserAction 所有者が何らかのアクションを記録した記事かどうかを返します。
-// ブックマーク、あとで読む、タグ付け、メモ、ハイライトのいずれかを持つと真になります。
+// ブックマーク(保存)、あとで読む、タグ付け、メモ、ハイライトのいずれかを持つと真になります。
 // 既読は閲覧の結果にすぎないためアクションには含めません。
+// 保存状態は Bookmarked が真実です。ラベル所属(BookmarkIDs)があれば不変条件で必ず Bookmarked も真になります。
 func (i Item) HasUserAction() bool {
-	return i.ReadLater ||
-		len(i.BookmarkIDs) > 0 ||
+	return i.Bookmarked ||
+		i.ReadLater ||
 		len(i.Tags) > 0 ||
 		len(i.Highlights) > 0 ||
 		i.Note != ""

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -34,7 +35,8 @@ func (h *Handler) listItemsFor(r *http.Request) (items []domain.Item, unreadStar
 		// ブックマーク済みは保管済みとして既読/未読管理の対象外にするため、既読ビューにも出しません。
 		items = keepItems(items, func(it domain.Item) bool { return it.Read && !isBookmarked(it) })
 	case "bookmark":
-		items = keepItems(items, func(it domain.Item) bool { return len(it.BookmarkIDs) > 0 })
+		// 保存済み(Bookmarked)の記事を出します。ラベルが無くても保存していれば対象です。
+		items = keepItems(items, func(it domain.Item) bool { return it.Bookmarked })
 	case "readlater":
 		items = keepItems(items, func(it domain.Item) bool { return it.ReadLater })
 	default:
@@ -131,7 +133,32 @@ func withReadHead(items []domain.Item, limit int) ([]domain.Item, int) {
 // isBookmarked 記事がいずれかのブックマークに所属しているかどうかを返します。
 // ブックマーク済みの記事は保管済みとみなし、未読ストリームや既読ビューや未読カウントの対象から外します。
 func isBookmarked(it domain.Item) bool {
-	return len(it.BookmarkIDs) > 0
+	return it.Bookmarked
+}
+
+// currentURLQuery HX-Current-URLヘッダのクエリ文字列を返します。
+// 状態変更POSTのURL(/app/items/{feedID}/{itemID}/bookmark など)はビュー情報を持たないため、
+// HTMXが送る現在表示中ページのURLからビュー(view=bookmark など)を読み取るのに使います。
+func currentURLQuery(r *http.Request) string {
+	cur := r.Header.Get("HX-Current-URL")
+	if cur == "" {
+		return ""
+	}
+	u, err := url.Parse(cur)
+	if err != nil {
+		return ""
+	}
+	return u.RawQuery
+}
+
+// isBookmarkViewURL 現在表示中のページがブックマーク(保存)記事のビューかどうかを返します。
+// view=bookmark(全保存記事)とbookmark={id}(ラベル別)の両方を対象とします。
+func isBookmarkViewURL(r *http.Request) bool {
+	q, err := url.ParseQuery(currentURLQuery(r))
+	if err != nil {
+		return false
+	}
+	return q.Get("view") == "bookmark" || q.Get("bookmark") != ""
 }
 
 // keepItems 述語を満たす記事だけを順序を保って残します。
@@ -308,7 +335,8 @@ func (h *Handler) renderCard(w http.ResponseWriter, r *http.Request, feedID, ite
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	h.renderWithTreeOOB(w, r, http.StatusOK, "_item_card.html", toItemView(it))
+	v := toItemView(it)
+	h.renderWithTreeOOB(w, r, http.StatusOK, "_item_card.html", v)
 }
 
 // itemMarkRead 既読状態を設定し、記事カードとツリーの未読数を再描画します。
@@ -321,6 +349,26 @@ func (h *Handler) itemMarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.renderCard(w, r, feedID, itemID)
+}
+
+// itemBookmark 記事の保存(ブックマーク)状態を設定します。
+// 保存の付け外しはブックマークボタンのピッカー1か所で行うため、応答はピッカーの再描画に一本化します。
+// ブックマークビューで解除した場合は、ピッカー更新に加えて当該記事カードを一覧から取り除きます
+// (記事カード内の解除ボタンを廃し、ブックマークボタンの解除でその挙動を代用するため)。
+func (h *Handler) itemBookmark(w http.ResponseWriter, r *http.Request) {
+	feedID := r.PathValue("feedID")
+	itemID := r.PathValue("itemID")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	bookmarked := r.FormValue("bookmarked") == "true"
+	if err := h.deps.Items.SetBookmarked(feedID, itemID, bookmarked); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	removeFromList := !bookmarked && isBookmarkViewURL(r)
+	h.renderBookmarkPicker(w, r, feedID, itemID, removeFromList)
 }
 
 // itemReadLater あとで読む状態を設定し、オーバーレイのアクション群を再描画します。

@@ -2,8 +2,31 @@
 <div
   class="bookmark-picker"
   id="bookmark-picker-{{ .ItemID }}"
-  x-init="$dispatch('bm-changed-{{ .ItemID }}', { active: {{ if .AnyChecked }}true{{ else }}false{{ end }} })"
+  x-init="$dispatch('bm-changed-{{ .ItemID }}', { active: {{ if .Bookmarked }}true{{ else }}false{{ end }} })"
 >
+  {{/* 保存(ブックマーク)状態のトグル。ラベル付け外しとは独立し、ラベルが無くても保存は維持されます。 */}}
+  <div class="bookmark-save">
+    {{ if .Bookmarked }}
+    <button
+      type="button"
+      class="bookmark-save-btn is-saved"
+      hx-post="/app/items/{{ .FeedID }}/{{ .ItemID }}/bookmark"
+      hx-vals='{"bookmarked": "false", "surface": "picker"}'
+      hx-target="#bookmark-picker-{{ .ItemID }}"
+      hx-swap="outerHTML"
+    >ブックマーク解除</button>
+    {{ else }}
+    <button
+      type="button"
+      class="bookmark-save-btn"
+      hx-post="/app/items/{{ .FeedID }}/{{ .ItemID }}/bookmark"
+      hx-vals='{"bookmarked": "true", "surface": "picker"}'
+      hx-target="#bookmark-picker-{{ .ItemID }}"
+      hx-swap="outerHTML"
+    >ブックマークに保存</button>
+    {{ end }}
+  </div>
+  {{/* ラベル(任意の分類)。チェックで付け外し。付けると自動で保存済みになります。 */}}
   <ul class="bookmark-options">
     {{ range .Options }}
     <li>
@@ -21,7 +44,7 @@
       </button>
     </li>
     {{ else }}
-    <li class="bookmark-empty">まだブックマークはありません</li>
+    <li class="bookmark-empty">まだラベルはありません</li>
     {{ end }}
   </ul>
   <form
@@ -37,16 +60,11 @@
       class="bookmark-create-input"
       type="text"
       name="name"
-      placeholder="＋ 新しい名称を作成"
-      aria-label="新しいブックマーク名"
+      placeholder="＋ 新しいラベルを作成"
+      aria-label="新しいラベル名"
       autocomplete="off"
       required
     >
   </form>
-  <span
-    class="item-bookmark"
-    id="bm-indicator-{{ .ItemID }}"
-    hx-swap-oob="true"
-  >{{ if .AnyChecked }}🔖 保存済み{{ end }}</span>
 </div>
 {{ end }}
