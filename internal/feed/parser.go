@@ -20,7 +20,9 @@ func NewXMLParser() *XMLParser {
 }
 
 // Parse バイト列の形式を判別し、対応するパーサでport.ParsedFeedを返します。
+// 実在のフィードにはXML1.0で不正な制御文字が紛れ込むことがあるため、判別とデコードの前に除去します。
 func (p *XMLParser) Parse(data []byte) (port.ParsedFeed, error) {
+	data = sanitizeXMLChars(data)
 	format, err := detectFormat(data)
 	if err != nil {
 		return port.ParsedFeed{}, fmt.Errorf("failed to detect feed format: %w", err)
@@ -34,6 +36,49 @@ func (p *XMLParser) Parse(data []byte) (port.ParsedFeed, error) {
 		return parseRDF(data)
 	default:
 		return port.ParsedFeed{}, fmt.Errorf("feed: unsupported format %q", format)
+	}
+}
+
+// sanitizeXMLChars XML1.0のChar生成規則で許可されない文字を取り除きます。
+// 許可されるのはタブ(0x09)と改行(0x0A)と復帰(0x0D)、および0x20以上の通常文字
+// (サロゲートと0xFFFE/0xFFFFを除く)です。encoding/xmlはStrict=falseでも不正文字を
+// 拒否するため、現実のフィードを購読できるよう事前に除去します。
+// 不正文字が無い場合は元のバイト列をそのまま返し、変換のアロケーションを避けます。
+// range string(data) は標準的なフィードを購読する大多数の経路で、コンパイラの最適化により
+// 文字列コピーを伴わずに走査されます。不正文字を見つけたときだけ除去した新しいバイト列を確保します。
+func sanitizeXMLChars(data []byte) []byte {
+	hasInvalid := false
+	for _, r := range string(data) {
+		if !isValidXMLChar(r) {
+			hasInvalid = true
+			break
+		}
+	}
+	if !hasInvalid {
+		return data
+	}
+	cleaned := strings.Map(func(r rune) rune {
+		if isValidXMLChar(r) {
+			return r
+		}
+		return -1
+	}, string(data))
+	return []byte(cleaned)
+}
+
+// isValidXMLChar rがXML1.0のChar生成規則に適合するかを返します。
+func isValidXMLChar(r rune) bool {
+	switch {
+	case r == 0x09 || r == 0x0A || r == 0x0D:
+		return true
+	case r >= 0x20 && r <= 0xD7FF:
+		return true
+	case r >= 0xE000 && r <= 0xFFFD:
+		return true
+	case r >= 0x10000 && r <= 0x10FFFF:
+		return true
+	default:
+		return false
 	}
 }
 
