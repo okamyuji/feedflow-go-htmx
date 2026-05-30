@@ -496,6 +496,8 @@ body {
   background: var(--surface);
   border-left: 1px solid var(--border);
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   z-index: 20;
   box-shadow: -0.5rem 0 2rem oklch(10% 0.02 264 / 0.35);
 }
@@ -504,12 +506,20 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1);
   margin-bottom: var(--space-3);
 }
 
 .reading-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1);
+}
+
+/* ブックマークピッカーは折り返し行で全幅を占め、操作ボタンの下に開きます。 */
+.reading-actions .bookmark-panel {
+  flex-basis: 100%;
 }
 
 .reading-title {
