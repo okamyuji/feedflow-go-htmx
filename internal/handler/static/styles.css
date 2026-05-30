@@ -185,14 +185,19 @@ body {
   outline: none;
 }
 
-/* 選択中のノードを強調します。左に色帯を出し、背景と文字色で現在地を明確にします */
-.tree-item.tree-active .tree-link {
+/* 選択中のノードを強調します。左に色帯を出し、背景と文字色で現在地を明確にします。
+   子孫結合子(スペース)だと、選択中のブックマーク親liの中にあるtree-sub内の子リンク全部に
+   強調が及んでしまう(親選択で子も全部オレンジになる)。直接の子だけに限定するため、
+   通常ノードは直下の.tree-link、ブックマーク親は.tree-bookmark-row直下の.tree-linkにだけ当てます。 */
+.tree-item.tree-active > .tree-link,
+.tree-item.tree-active > .tree-bookmark-row > .tree-link {
   background: var(--surface-2);
   box-shadow: inset 0.2rem 0 0 var(--accent);
   font-weight: 700;
 }
 
-.tree-item.tree-active .tree-label {
+.tree-item.tree-active > .tree-link .tree-label,
+.tree-item.tree-active > .tree-bookmark-row > .tree-link .tree-label {
   color: var(--accent);
 }
 
@@ -777,6 +782,13 @@ select.field-input {
 }
 
 /* 左ペインのブックマーク展開ノードと子ノードです。 */
+/* ブックマークの親項目だけは、.tree-itemのflex(横並び)を解除して縦積みにします。
+   こうしないと親リンク行(.tree-bookmark-row)と子リスト(.tree-sub)が横に並び、
+   ラベルが折り返して子が放射状に見えてしまいます。子はtree-subのインデントで従属させます。 */
+.tree-item.tree-bookmark {
+  display: block;
+}
+
 .tree-bookmark-row {
   display: flex;
   align-items: center;
@@ -806,7 +818,10 @@ select.field-input {
 .tree-sub {
   list-style: none;
   margin: 0 0 var(--space-1);
-  padding-left: var(--space-3);
+  /* 親ラベル「ブックマーク」は先頭の開閉ボタン(▸ 1.75rem)の分だけ右にずれて始まります。
+     子(カテゴリ)の見出しをその親ラベルの真下へ揃え、ぶら下がる階層に見せるため、
+     開閉ボタン幅を含めたインデントを与えます。デザイントークンの--space-4(2rem)を使います。 */
+  padding-left: var(--space-4);
 }
 
 /* 未読フィード群と通常フィード群の区切り、既読先頭群と未読の区切りです。 */

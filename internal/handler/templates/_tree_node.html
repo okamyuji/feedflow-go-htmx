@@ -1,6 +1,11 @@
 {{ define "_tree_node.html" }}
 {{ if eq .Kind "bookmark" }}
-<li class="tree-item tree-bookmark{{ if .Active }} tree-active{{ end }}" x-data="{ open: {{ if .Active }}true{{ else }}false{{ end }} }">
+{{/* 親(ブックマーク)が選択中、またはいずれかの子(名称コレクション)が選択中なら開いた状態で初期化します。
+     こうしないと、子を選ぶたびにツリーがOOB再生成され、親のx-dataがActive(=view=bookmark時のみ)で
+     再初期化されて折りたたまれてしまいます。 */}}
+{{ $open := .Active }}
+{{ range .Children }}{{ if .Active }}{{ $open = true }}{{ end }}{{ end }}
+<li class="tree-item tree-bookmark{{ if .Active }} tree-active{{ end }}" x-data="{ open: {{ if $open }}true{{ else }}false{{ end }} }">
   <div class="tree-bookmark-row">
     <button
       class="tree-disclosure"
@@ -32,8 +37,9 @@
         hx-target="#main-pane"
         hx-push-url="true"
       >
+        {{/* ブックマークは意図的に保存したものなので、件数バッジは出しません(見やすさ優先)。
+             フィードの未読バッジは別ノードのため影響しません。 */}}
         <span class="tree-label">{{ .Label }}</span>
-        {{ if gt .ItemCount 0 }}<span class="tree-badge">{{ .ItemCount }}</span>{{ end }}
       </a>
     </li>
     {{ end }}
