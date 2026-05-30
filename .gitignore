@@ -24,3 +24,6 @@ node_modules/
 
 # OSとエディタ
 .DS_Store
+
+# verify-hardening.shの一時ディレクトリ
+.hardening-tmp/

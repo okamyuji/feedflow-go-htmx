@@ -32,7 +32,12 @@ check() {
 
 command -v go >/dev/null 2>&1 || { echo "go not found"; exit 2; }
 
-WORK="$(mktemp -d)"
+# 一時ファイルはモジュール内に置く。SSRFチェックのGoプログラムがinternalパッケージを
+# importするため、モジュール外(/tmpなど)だとuse of internal package not allowedで失敗する。
+# ドット始まりのためgoの ./... グロブからは除外され、通常のビルドやテストに混入しない。
+WORK="$ROOT/.hardening-tmp"
+rm -rf "$WORK"
+mkdir -p "$WORK"
 trap 'rm -rf "$WORK"' EXIT
 
 check "unit tests (go test -race ./...)" bash -c "go test -race -count=1 ./... >/dev/null"
@@ -80,7 +85,7 @@ func main() {
 GOEOF
 
 check "SSRF 拒否(ループバックとプライベート IP とスキーム制限)" \
-  bash -c "go run '$SSRF_PROG'"
+  go run "$SSRF_PROG"
 
 # --- 初回セットアップ無効化シナリオ ---
 # user.json登録後はGET /setupがログインへリダイレクトし
@@ -98,16 +103,19 @@ run_setup_check() {
   FEEDFLOW_SESSION_KEY="hardening-test-key-0123456789abcdef" \
     "$SETUP_BIN" &
   local pid=$!
-  trap 'kill "$pid" 2>/dev/null || true' RETURN
+  local rc=0
 
   for _ in $(seq 1 50); do
-    if go run "$SETUP_PROG" wait "http://127.0.0.1:8097/healthz"; then
+    if go run "$SETUP_PROG" wait "http://127.0.0.1:8097/healthz" 2>/dev/null; then
       break
     fi
     sleep 0.2
   done
 
-  go run "$SETUP_PROG" verify "http://127.0.0.1:8097"
+  go run "$SETUP_PROG" verify "http://127.0.0.1:8097" || rc=$?
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  return "$rc"
 }
 
 SETUP_PROG="$WORK/setup_check.go"
@@ -214,8 +222,7 @@ func main() {
 }
 GOEOF
 
-check "初回セットアップ無効化(登録後の /setup 到達拒否)" \
-  bash -c "run_setup_check"
+check "初回セットアップ無効化(登録後の /setup 到達拒否)" run_setup_check
 
 # --- CSRF検証シナリオ ---
 # ログイン後、CSRFトークン無しのPOST /app/feedsは拒否され、
@@ -233,16 +240,19 @@ run_csrf_check() {
   FEEDFLOW_SESSION_KEY="hardening-csrf-key-0123456789abcdef" \
     "$CSRF_BIN" &
   local pid=$!
-  trap 'kill "$pid" 2>/dev/null || true' RETURN
+  local rc=0
 
   for _ in $(seq 1 50); do
-    if go run "$SETUP_PROG" wait "http://127.0.0.1:8096/healthz"; then
+    if go run "$SETUP_PROG" wait "http://127.0.0.1:8096/healthz" 2>/dev/null; then
       break
     fi
     sleep 0.2
   done
 
-  go run "$CSRF_PROG" "http://127.0.0.1:8096"
+  go run "$CSRF_PROG" "http://127.0.0.1:8096" || rc=$?
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  return "$rc"
 }
 
 CSRF_PROG="$WORK/csrf_check.go"
@@ -359,8 +369,7 @@ func main() {
 }
 GOEOF
 
-check "CSRF 検証(トークン無し POST は 403、トークン付きは通過)" \
-  bash -c "run_csrf_check"
+check "CSRF 検証(トークン無し POST は 403、トークン付きは通過)" run_csrf_check
 
 echo
 echo "----------------------------------------"
