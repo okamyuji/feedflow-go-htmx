@@ -120,6 +120,10 @@ function registerFeedflow() {
       });
       // 差し替え後のtree-paneへ退避値を復元します。要素が作り直されてもidで取り直して設定します。
       // 購読解除で内容が縮む場合はブラウザがclampするため、削除位置の近辺が保たれます。
+      // あわせて、OOB(outerHTML置換)で差し替わったtree-pane内のAlpineを初期化します。
+      // hx-swap-oobの差し替えにはAlpineの自動初期化が及ばず、これをしないとブックマークの
+      // 開閉(x-data/x-show/@click)が動かず、子カテゴリの表示やクリックができません。
+      // restoreTreeScrollがスワップごとに一度だけ真になるため、二重初期化にはなりません。
       document.body.addEventListener("htmx:afterSettle", () => {
         if (!restoreTreeScroll) {
           return;
@@ -128,6 +132,9 @@ function registerFeedflow() {
         const tree = document.getElementById("tree-pane");
         if (tree) {
           tree.scrollTop = this.treeScrollTop;
+          if (window.Alpine) {
+            window.Alpine.initTree(tree);
+          }
         }
       });
       this.autoRead = document.body.getAttribute("data-auto-read") !== "false";
