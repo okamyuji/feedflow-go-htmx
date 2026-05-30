@@ -430,12 +430,17 @@ body {
 .quick-btn,
 .btn-ghost,
 .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-1) var(--space-2);
   background: var(--surface-2);
   color: var(--text);
   font-size: var(--text-sm);
+  line-height: 1.2;
+  white-space: nowrap;
   cursor: pointer;
   transition: background var(--duration) var(--ease);
 }
@@ -865,6 +870,19 @@ select.field-input {
   .tree-link {
     display: flex;
     align-items: center;
+  }
+
+  /* 狭い画面でもヘッダーの操作ボタンを一列に収め、高さと余白を揃えます。 */
+  .app-bar {
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .app-actions {
+    gap: 0.375rem;
+  }
+
+  .app-actions .icon-btn {
+    padding: var(--space-1);
   }
 }
 
