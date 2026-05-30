@@ -81,7 +81,7 @@ func (s *BookmarkService) CreateAndAdd(feedID, itemID, name string) (domain.Book
 
 // Rename 指定IDのラベル名を変更します。前後空白は除去します。
 // 空名は ErrBookmarkNameRequired を返します。別のラベルが同名なら ErrBookmarkNameTaken を返します。
-// 対象IDが存在しない場合は store.ErrNotFound を透過します。
+// 対象IDが存在しない場合は ErrBookmarkNotFound をラップして返します。
 func (s *BookmarkService) Rename(id, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {

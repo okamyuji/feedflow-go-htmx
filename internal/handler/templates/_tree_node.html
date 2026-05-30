@@ -49,10 +49,13 @@
         type="button"
         x-show="!editing"
         aria-label="ラベル名を変更"
-        @click="editing = true; $nextTick(() => $refs.renameInput.focus())"
+        @click="editing = true"
       >名前変更</button>
+      {{/* 専用クラスtree-label-deleteを使います。tree-unsubscribe(フィード購読解除)と
+           セレクタを共有すると、一括解除処理が折り畳み中の不可視なラベル削除ボタンまで
+           掴んでしまうため、責務ごとにクラスを分けます。 */}}
       <button
-        class="tree-unsubscribe"
+        class="tree-label-delete"
         type="button"
         x-show="!editing"
         aria-label="ラベルを削除"
