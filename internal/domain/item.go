@@ -32,7 +32,11 @@ type Item struct {
 // 旧 starred キーは廃止済みのため読み捨てます。
 // 保存とラベルを分離する前の旧データには bookmarked キーが無く、ラベル所属の有無で保存を表していました。
 // そのため bookmarked キーが無く(=RawBookmarkedがnil)かつラベルを持つ記事は保存済みとみなして移行します。
-// bookmarked が明示的にfalseで書かれている新データはその値を尊重します(falseとキー不在を区別するためポインタで受けます)。
+// bookmarked が明示的に書かれている新データはその値を尊重します(falseとキー不在を区別するためポインタで受けます)。
+//
+// 注意: 補助構造体のアウター側 RawBookmarked と埋め込み alias.Bookmarked は同じ json タグ "bookmarked" を持ちます。
+// encoding/json は同名タグが競合すると両方を無視するため、埋め込み側の i.Bookmarked には反映されません。
+// そこでデコード後に RawBookmarked の値を明示的に i.Bookmarked へ写します。
 func (i *Item) UnmarshalJSON(data []byte) error {
 	type alias Item
 	aux := struct {
@@ -46,7 +50,10 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 	if len(i.BookmarkIDs) == 0 && len(aux.LegacyBoardIDs) > 0 {
 		i.BookmarkIDs = aux.LegacyBoardIDs
 	}
-	if aux.RawBookmarked == nil && len(i.BookmarkIDs) > 0 {
+	switch {
+	case aux.RawBookmarked != nil:
+		i.Bookmarked = *aux.RawBookmarked
+	case len(i.BookmarkIDs) > 0:
 		i.Bookmarked = true
 	}
 	return nil
