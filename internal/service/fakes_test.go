@@ -72,7 +72,7 @@ type fakeRepo struct {
 	feedOrder  []string
 	categories map[string]domain.Category
 	items      map[string][]domain.Item
-	boards     map[string]domain.Board
+	bookmarks  map[string]domain.Bookmark
 	filters    map[string]domain.MuteFilter
 	settings   domain.Settings
 	user       domain.User
@@ -84,7 +84,7 @@ func newFakeRepo() *fakeRepo {
 		feeds:      map[string]domain.Feed{},
 		categories: map[string]domain.Category{},
 		items:      map[string][]domain.Item{},
-		boards:     map[string]domain.Board{},
+		bookmarks:  map[string]domain.Bookmark{},
 		filters:    map[string]domain.MuteFilter{},
 		settings:   domain.DefaultSettings(),
 		failOn:     map[string]error{},
@@ -183,30 +183,30 @@ func (r *fakeRepo) SaveItems(feedID string, items []domain.Item) error {
 	return nil
 }
 
-func (r *fakeRepo) Boards() ([]domain.Board, error) {
-	if err := r.fail("Boards"); err != nil {
+func (r *fakeRepo) Bookmarks() ([]domain.Bookmark, error) {
+	if err := r.fail("Bookmarks"); err != nil {
 		return nil, err
 	}
-	out := make([]domain.Board, 0, len(r.boards))
-	for _, b := range r.boards {
+	out := make([]domain.Bookmark, 0, len(r.bookmarks))
+	for _, b := range r.bookmarks {
 		out = append(out, b)
 	}
 	return out, nil
 }
 
-func (r *fakeRepo) SaveBoard(board domain.Board) error {
-	if err := r.fail("SaveBoard"); err != nil {
+func (r *fakeRepo) SaveBookmark(bookmark domain.Bookmark) error {
+	if err := r.fail("SaveBookmark"); err != nil {
 		return err
 	}
-	r.boards[board.ID] = board
+	r.bookmarks[bookmark.ID] = bookmark
 	return nil
 }
 
-func (r *fakeRepo) DeleteBoard(id string) error {
-	if err := r.fail("DeleteBoard"); err != nil {
+func (r *fakeRepo) DeleteBookmark(id string) error {
+	if err := r.fail("DeleteBookmark"); err != nil {
 		return err
 	}
-	delete(r.boards, id)
+	delete(r.bookmarks, id)
 	return nil
 }
 

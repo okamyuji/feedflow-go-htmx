@@ -677,6 +677,197 @@ select.field-input {
   flex-wrap: wrap;
 }
 
+/* ブックマーク保存済み表示と保存ピッカーです。 */
+.item-bookmark {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+
+.bookmark-panel {
+  margin-top: var(--space-1);
+}
+
+.bookmark-picker {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: var(--space-1);
+}
+
+.bookmark-options {
+  list-style: none;
+  margin: 0 0 var(--space-1);
+  padding: 0;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.bookmark-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: 2.75rem;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bookmark-option:hover,
+.bookmark-option:focus-visible {
+  background: var(--surface);
+  outline: none;
+}
+
+.bookmark-check {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  color: var(--bg);
+}
+
+.bookmark-option.is-checked .bookmark-check {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
+
+.bookmark-empty {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-1);
+}
+
+.bookmark-create-input {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.bookmark-create-input:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 1px;
+}
+
+/* 左ペインのブックマーク展開ノードと子ノードです。 */
+.tree-bookmark-row {
+  display: flex;
+  align-items: center;
+}
+
+.tree-disclosure {
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tree-caret {
+  display: inline-block;
+  transition: transform var(--duration) var(--ease);
+}
+
+.tree-caret.is-open {
+  transform: rotate(90deg);
+}
+
+.tree-sub {
+  list-style: none;
+  margin: 0 0 var(--space-1);
+  padding-left: var(--space-3);
+}
+
+/* 未読フィード群と通常フィード群の区切り、既読先頭群と未読の区切りです。 */
+.tree-feed-divider {
+  height: 1px;
+  margin: var(--space-1) var(--space-2);
+  background: var(--border);
+  list-style: none;
+}
+
+.item-unread-divider {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.item-unread-divider::before,
+.item-unread-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* モバイル(<48rem)はツリーをオフキャンバス・ドロワーにします。 */
+.drawer-scrim {
+  display: none;
+}
+
+@media (max-width: 47.999rem) {
+  .tree-pane {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(80vw, 18rem);
+    transform: translateX(-100%);
+    transition: transform var(--duration) var(--ease);
+    box-shadow: 0.5rem 0 2rem oklch(10% 0.02 264 / 0.35);
+  }
+
+  .app-body.sidebar-open .tree-pane {
+    transform: translateX(0);
+  }
+
+  .app-body.sidebar-collapsed .tree-pane {
+    /* モバイルではdisplay:noneにせずtranslateで隠し、アニメーションを保ちます。 */
+    display: block;
+  }
+
+  .drawer-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    background: oklch(10% 0.02 264 / 0.5);
+  }
+
+  /* タップしやすいよう主要な操作要素の高さを確保します。 */
+  .tree-link,
+  .quick-btn,
+  .icon-btn,
+  .btn-ghost {
+    min-height: 2.75rem;
+  }
+
+  .tree-link {
+    display: flex;
+    align-items: center;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

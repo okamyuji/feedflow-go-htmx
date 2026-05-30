@@ -114,6 +114,7 @@ func buildApp() (http.Handler, *poller.Runner, error) {
 	mute := service.NewMuteService(sdeps)
 	subs := service.NewSubscriptionService(sdeps)
 	items := service.NewItemService(sdeps, mute)
+	bookmarks := service.NewBookmarkService(sdeps, items)
 	retention := service.NewRetentionService(sdeps)
 	opml := service.NewOPMLService(sdeps, subs)
 	settings := service.NewSettingsService(sdeps)
@@ -139,6 +140,7 @@ func buildApp() (http.Handler, *poller.Runner, error) {
 	h, err := handler.New(handler.Deps{
 		Subscriptions:     subs,
 		Items:             items,
+		Bookmarks:         bookmarks,
 		Retention:         retention,
 		Mutes:             mute,
 		OPML:              opml,

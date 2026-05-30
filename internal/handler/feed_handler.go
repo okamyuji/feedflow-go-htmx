@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"sort"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 )
@@ -9,58 +10,106 @@ import (
 // buildTree 左ペインの購読ツリーを組み立てます。固定の集約ノードに続けてフィードを並べます。
 // すべてノードは未読を読む主ストリームのため未読合計を持たせます。
 // 既読ノードは既読記事をまとめて見るための入口で、件数バッジは持たせません。
+// ブックマークノードは全件への入口で、名称コレクションを子ノードとして開閉表示します。
+// 未読のあるフィードは更新日時の新しい順で先頭にまとめ、残りは購読順を保ちます。
 func (h *Handler) buildTree() ([]feedTreeNode, error) {
 	feeds, err := h.deps.Subscriptions.ListFeeds()
 	if err != nil {
 		return nil, err
 	}
-	_, unreadTotal, err := h.itemCounts("")
+	allItems, err := h.deps.Items.ListItems("")
 	if err != nil {
 		return nil, err
 	}
-	nodes := []feedTreeNode{
-		{Kind: "all", Label: "すべて", UnreadCount: unreadTotal},
-		{Kind: "read", Label: "既読"},
-		{Kind: "starred", Label: "スター"},
-		{Kind: "readlater", Label: "あとで読む"},
-	}
-	for _, f := range feeds {
-		unread, err := h.unreadCount(f.ID)
-		if err != nil {
-			return nil, err
+
+	unreadTotal := 0
+	unreadByFeed := make(map[string]int)
+	for _, it := range allItems {
+		if !it.Read {
+			unreadTotal++
+			unreadByFeed[it.FeedID]++
 		}
-		nodes = append(nodes, feedTreeNode{
-			Kind:        "feed",
-			ID:          f.ID,
-			Label:       f.Title,
-			UnreadCount: unread,
-			HasError:    f.HasError(),
-		})
 	}
+
+	bookmarkNode, err := h.buildBookmarkNode(allItems)
+	if err != nil {
+		return nil, err
+	}
+
+	feedNodes := orderFeedNodes(feeds, unreadByFeed)
+	nodes := make([]feedTreeNode, 0, 4+len(feedNodes))
+	nodes = append(nodes,
+		feedTreeNode{Kind: "all", Label: "すべて", UnreadCount: unreadTotal},
+		feedTreeNode{Kind: "read", Label: "既読"},
+		bookmarkNode,
+		feedTreeNode{Kind: "readlater", Label: "あとで読む"},
+	)
+	nodes = append(nodes, feedNodes...)
 	return nodes, nil
 }
 
-// itemCounts 指定フィードの総件数と未読件数を返します。引数feedIDが空のときは全フィードを対象にします。
-func (h *Handler) itemCounts(feedID string) (total, unread int, err error) {
-	items, err := h.deps.Items.ListItems(feedID)
-	if err != nil {
-		return 0, 0, err
-	}
-	for _, it := range items {
-		if !it.Read {
-			unread++
+// orderFeedNodes フィードを「未読のある群(更新日時の新しい順)」「残り(購読順)」の順に並べたノード列を返します。
+// 未読群が空のときは購読順のまま返します。未読群の末尾ノードには区切り線用のフラグを立てます。
+func orderFeedNodes(feeds []domain.Feed, unreadByFeed map[string]int) []feedTreeNode {
+	unread := make([]domain.Feed, 0, len(feeds))
+	rest := make([]feedTreeNode, 0, len(feeds))
+	for _, f := range feeds {
+		if unreadByFeed[f.ID] > 0 {
+			unread = append(unread, f)
+			continue
 		}
+		rest = append(rest, feedNode(f, 0))
 	}
-	return len(items), unread, nil
+	// 未読フィードは最終更新日時の新しい順に並べます。
+	sort.SliceStable(unread, func(i, j int) bool {
+		return unread[i].LastFetchedAt.After(unread[j].LastFetchedAt)
+	})
+
+	out := make([]feedTreeNode, 0, len(feeds))
+	for i, f := range unread {
+		n := feedNode(f, unreadByFeed[f.ID])
+		if i == len(unread)-1 && len(rest) > 0 {
+			n.UnreadGroupEnd = true
+		}
+		out = append(out, n)
+	}
+	return append(out, rest...)
 }
 
-// unreadCount 指定フィードの未読件数を数えます。引数feedIDが空のときは全フィードを対象にします。
-func (h *Handler) unreadCount(feedID string) (int, error) {
-	_, unread, err := h.itemCounts(feedID)
-	if err != nil {
-		return 0, err
+// feedNode フィードから表示ノードを作ります。
+func feedNode(f domain.Feed, unread int) feedTreeNode {
+	return feedTreeNode{
+		Kind:        "feed",
+		ID:          f.ID,
+		Label:       f.Title,
+		UnreadCount: unread,
+		HasError:    f.HasError(),
 	}
-	return unread, nil
+}
+
+// buildBookmarkNode ブックマークの親ノードと名称コレクションの子ノードを組み立てます。
+// 子ノードには各ブックマークの所属件数を持たせます。元記事が消えた所属は自然に件数へ反映されません。
+func (h *Handler) buildBookmarkNode(allItems []domain.Item) (feedTreeNode, error) {
+	bookmarks, err := h.deps.Bookmarks.List()
+	if err != nil {
+		return feedTreeNode{}, err
+	}
+	countByID := make(map[string]int)
+	for _, it := range allItems {
+		for _, id := range it.BookmarkIDs {
+			countByID[id]++
+		}
+	}
+	children := make([]feedTreeNode, 0, len(bookmarks))
+	for _, b := range bookmarks {
+		children = append(children, feedTreeNode{
+			Kind:      "bookmarkItem",
+			ID:        b.ID,
+			Label:     b.Name,
+			ItemCount: countByID[b.ID],
+		})
+	}
+	return feedTreeNode{Kind: "bookmark", Label: "ブックマーク", Children: children}, nil
 }
 
 // treeData ツリー部分テンプレートに渡す描画モデルを組み立てます。
@@ -75,7 +124,8 @@ func (h *Handler) treeData(r *http.Request) (pageData, error) {
 }
 
 // markActiveNodes リクエストのクエリに対応するノードをActiveにした新しいスライスを返します。
-// feedとcategoryとboardはIDで、それ以外はviewの種別で一致を判定します。view未指定はすべて(all)を選択中とみなします。
+// feedとcategoryとbookmarkはIDで、それ以外はviewの種別で一致を判定します。view未指定はすべて(all)を選択中とみなします。
+// ブックマーク子ノード(bookmarkItem)はbookmarkクエリのIDで一致を判定します。
 func markActiveNodes(nodes []feedTreeNode, r *http.Request) []feedTreeNode {
 	q := r.URL.Query()
 	var kind, id string
@@ -84,8 +134,8 @@ func markActiveNodes(nodes []feedTreeNode, r *http.Request) []feedTreeNode {
 		kind, id = "feed", q.Get("feed")
 	case q.Get("category") != "":
 		kind, id = "category", q.Get("category")
-	case q.Get("board") != "":
-		kind, id = "board", q.Get("board")
+	case q.Get("bookmark") != "":
+		kind, id = "bookmarkItem", q.Get("bookmark")
 	default:
 		kind = q.Get("view")
 		if kind == "" {
@@ -95,6 +145,14 @@ func markActiveNodes(nodes []feedTreeNode, r *http.Request) []feedTreeNode {
 	out := make([]feedTreeNode, len(nodes))
 	for i, n := range nodes {
 		n.Active = n.Kind == kind && n.ID == id
+		if len(n.Children) > 0 {
+			children := make([]feedTreeNode, len(n.Children))
+			for j, c := range n.Children {
+				c.Active = c.Kind == kind && c.ID == id
+				children[j] = c
+			}
+			n.Children = children
+		}
 		out[i] = n
 	}
 	return out
@@ -114,16 +172,31 @@ func (h *Handler) currentSelectionLabel(r *http.Request) string {
 		}
 		return "フィード"
 	}
+	if bookmarkID := q.Get("bookmark"); bookmarkID != "" {
+		return h.currentBookmarkLabel(bookmarkID)
+	}
 	switch q.Get("view") {
 	case "read":
 		return "既読"
-	case "starred":
-		return "スター"
+	case "bookmark":
+		return "ブックマーク"
 	case "readlater":
 		return "あとで読む"
 	default:
 		return "すべて"
 	}
+}
+
+// currentBookmarkLabel bookmarkクエリで選択中の名称を返します。見つからない場合は「ブックマーク」を返します。
+func (h *Handler) currentBookmarkLabel(bookmarkID string) string {
+	if bms, err := h.deps.Bookmarks.List(); err == nil {
+		for _, b := range bms {
+			if b.ID == bookmarkID {
+				return b.Name
+			}
+		}
+	}
+	return "ブックマーク"
 }
 
 // feedSubscribe フィードURLまたはサイトURLから購読を追加し、ツリーペインを部分更新で返します。
@@ -186,7 +259,7 @@ func toItemView(it domain.Item) itemView {
 		Author:      it.Author,
 		PublishedAt: formatJST(it.PublishedAt),
 		Read:        it.Read,
-		Starred:     it.Starred,
+		Bookmarked:  len(it.BookmarkIDs) > 0,
 		ReadLater:   it.ReadLater,
 	}
 }

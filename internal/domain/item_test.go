@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -13,14 +14,13 @@ func TestItemHasUserAction(t *testing.T) {
 		want bool
 	}{
 		{name: "アクションなし", item: Item{}, want: false},
-		{name: "スターのみ", item: Item{Starred: true}, want: true},
+		{name: "ブックマークのみ", item: Item{BookmarkIDs: []string{"b1"}}, want: true},
 		{name: "あとで読むのみ", item: Item{ReadLater: true}, want: true},
-		{name: "ボード保存のみ", item: Item{BoardIDs: []string{"b1"}}, want: true},
 		{name: "タグのみ", item: Item{Tags: []string{"go"}}, want: true},
 		{name: "メモのみ", item: Item{Note: "あとで確認します"}, want: true},
 		{name: "ハイライトのみ", item: Item{Highlights: []string{"重要な一文"}}, want: true},
 		{name: "既読だけではアクション扱いしない", item: Item{Read: true}, want: false},
-		{name: "空ボードと空タグはアクションなし", item: Item{BoardIDs: []string{}, Tags: []string{}}, want: false},
+		{name: "空ブックマークと空タグはアクションなし", item: Item{BookmarkIDs: []string{}, Tags: []string{}}, want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -29,6 +29,30 @@ func TestItemHasUserAction(t *testing.T) {
 				t.Fatalf("HasUserAction() got %v want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestItemUnmarshalLegacyBoardIDs(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{"id":"i1","board_ids":["b1","b2"],"starred":true}`)
+	var it Item
+	if err := json.Unmarshal(raw, &it); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(it.BookmarkIDs) != 2 || it.BookmarkIDs[0] != "b1" {
+		t.Fatalf("旧 board_ids を BookmarkIDs に取り込むべき got %v", it.BookmarkIDs)
+	}
+}
+
+func TestItemUnmarshalPrefersBookmarkIDs(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{"id":"i1","bookmark_ids":["x"],"board_ids":["legacy"]}`)
+	var it Item
+	if err := json.Unmarshal(raw, &it); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(it.BookmarkIDs) != 1 || it.BookmarkIDs[0] != "x" {
+		t.Fatalf("bookmark_ids を優先すべき got %v", it.BookmarkIDs)
 	}
 }
 
@@ -71,7 +95,7 @@ func TestItemShouldRetain(t *testing.T) {
 		},
 		{
 			name:      "アクション済みは件数超過でも永久保持する",
-			item:      Item{Starred: true, Read: true, FetchedAt: old},
+			item:      Item{BookmarkIDs: []string{"b1"}, Read: true, FetchedAt: old},
 			rankIndex: maxItems + 100,
 			want:      true,
 		},

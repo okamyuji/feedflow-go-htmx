@@ -20,7 +20,7 @@ func sampleItems() map[string][]domain.Item {
 	}
 }
 
-func TestItemListShowsOnlyUnreadByDefault(t *testing.T) {
+func TestItemListSingleFeedShowsReadHeadThenUnread(t *testing.T) {
 	t.Parallel()
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
 	h := newAppHandler(t, subs, &stubItems{items: sampleItems()})
@@ -36,10 +36,33 @@ func TestItemListShowsOnlyUnreadByDefault(t *testing.T) {
 	}
 	body := rec.Body.String()
 	if !strings.Contains(body, "記事1") {
-		t.Fatalf("body should list the unread item: %q", body)
+		t.Fatalf("単一フィードは未読の記事1を表示すべきです: %q", body)
+	}
+	if !strings.Contains(body, "記事2") {
+		t.Fatalf("単一フィードは既読の記事2を先頭に再表示すべきです: %q", body)
+	}
+	if !strings.Contains(body, "ここから未読") {
+		t.Fatalf("既読先頭群と未読の境界に区切りを出すべきです: %q", body)
+	}
+}
+
+func TestItemListAllViewHidesRead(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	h := newAppHandler(t, subs, &stubItems{items: sampleItems()})
+	req := httptest.NewRequest(http.MethodGet, "/app/items", nil)
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemList(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "記事1") {
+		t.Fatalf("すべての一覧は未読の記事1を表示すべきです: %q", body)
 	}
 	if strings.Contains(body, "記事2") {
-		t.Fatalf("既定の一覧は未読のみで既読の記事2を含めてはいけません: %q", body)
+		t.Fatalf("すべての一覧は既読の記事2を含めてはいけません: %q", body)
 	}
 }
 
@@ -172,26 +195,6 @@ func TestItemMarkAllUpdatesTreeOOB(t *testing.T) {
 	}
 }
 
-func TestItemStar(t *testing.T) {
-	t.Parallel()
-	subs := &stubSubscriptions{}
-	items := &stubItems{items: sampleItems()}
-	h := newAppHandler(t, subs, items)
-	form := url.Values{"starred": {"true"}}
-	req := httptest.NewRequest(http.MethodPost, "/app/items/f1/i1/star", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetPathValue("feedID", "f1")
-	req.SetPathValue("itemID", "i1")
-	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
-	rec := httptest.NewRecorder()
-
-	h.itemStar(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
-	}
-}
-
 func TestItemMarkAll(t *testing.T) {
 	t.Parallel()
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
@@ -225,10 +228,10 @@ func TestBulkReadContext(t *testing.T) {
 		{"既定の未読ストリーム", "/app/items", "all", "", ""},
 		{"すべてビュー", "/app/items?view=all", "all", "", ""},
 		{"既読ビュー", "/app/items?view=read", "none", "", ""},
-		{"スタービュー", "/app/items?view=starred", "none", "", ""},
+		{"ブックマークビュー", "/app/items?view=bookmark", "none", "", ""},
 		{"あとで読むビュー", "/app/items?view=readlater", "none", "", ""},
 		{"カテゴリ", "/app/items?category=c1", "none", "", ""},
-		{"ボード", "/app/items?board=b1", "none", "", ""},
+		{"ブックマーク絞り込み", "/app/items?bookmark=b1", "none", "", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -300,11 +303,11 @@ func TestItemListReadViewShowsReadLabel(t *testing.T) {
 	}
 }
 
-func TestItemListStarredViewHidesBulkRead(t *testing.T) {
+func TestItemListBookmarkViewHidesBulkRead(t *testing.T) {
 	t.Parallel()
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "フィード1"}}}
 	h := newAppHandler(t, subs, &stubItems{items: sampleItems()})
-	req := httptest.NewRequest(http.MethodGet, "/app/items?view=starred", nil)
+	req := httptest.NewRequest(http.MethodGet, "/app/items?view=bookmark", nil)
 	req.Header.Set("HX-Request", "true")
 	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
 	rec := httptest.NewRecorder()

@@ -23,13 +23,14 @@ const dirPerm = 0o700
 
 // ファイル名の定数です。dataディレクトリ直下に配置します。
 const (
-	feedsFile      = "feeds.json"
-	categoriesFile = "categories.json"
-	boardsFile     = "boards.json"
-	filtersFile    = "filters.json"
-	settingsFile   = "settings.json"
-	userFile       = "user.json"
-	itemsDir       = "items"
+	feedsFile        = "feeds.json"
+	categoriesFile   = "categories.json"
+	bookmarksFile    = "bookmarks.json"
+	legacyBoardsFile = "boards.json"
+	filtersFile      = "filters.json"
+	settingsFile     = "settings.json"
+	userFile         = "user.json"
+	itemsDir         = "items"
 )
 
 // Store メモリ常駐の永続化集約です。全エンティティをメモリに保持しsync.RWMutexで保護します。
@@ -41,7 +42,7 @@ type Store struct {
 	mu         sync.RWMutex
 	feeds      []domain.Feed
 	categories []domain.Category
-	boards     []domain.Board
+	bookmarks  []domain.Bookmark
 	filters    []domain.MuteFilter
 	items      map[string][]domain.Item
 	settings   domain.Settings
@@ -85,7 +86,7 @@ func (s *Store) load() error {
 	if err := s.loadSlice(categoriesFile, &s.categories); err != nil {
 		return err
 	}
-	if err := s.loadSlice(boardsFile, &s.boards); err != nil {
+	if err := s.loadBookmarks(); err != nil {
 		return err
 	}
 	if err := s.loadSlice(filtersFile, &s.filters); err != nil {
@@ -98,6 +99,34 @@ func (s *Store) load() error {
 		return err
 	}
 	return s.loadItems()
+}
+
+// loadBookmarks bookmarks.jsonを読み込みます。
+// bookmarks.jsonが無く旧boards.jsonが存在する場合は、Board(id,name)をBookmarkへ変換して取り込み、
+// bookmarks.jsonとして書き出すワンタイムマイグレーションを行います。
+// 旧ボードは左メニュー未公開で実データはほぼ無い前提ですが、安全側で移行します。
+func (s *Store) loadBookmarks() error {
+	if err := s.loadSlice(bookmarksFile, &s.bookmarks); err != nil {
+		return err
+	}
+	if len(s.bookmarks) > 0 {
+		return nil
+	}
+	if _, err := os.Stat(s.path(bookmarksFile)); err == nil {
+		return nil // 空のbookmarks.jsonが既にあるなら移行しません
+	}
+	var legacy []domain.Bookmark
+	if err := s.loadSlice(legacyBoardsFile, &legacy); err != nil {
+		return err
+	}
+	if len(legacy) == 0 {
+		return nil
+	}
+	s.bookmarks = legacy
+	if err := writeJSONAtomic(s.path(bookmarksFile), s.bookmarks); err != nil {
+		return fmt.Errorf("failed to migrate boards to bookmarks: %w", err)
+	}
+	return nil
 }
 
 // loadSlice nameのファイルをdstにデコードします。ファイルが無い場合は何もしません。

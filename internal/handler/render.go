@@ -40,7 +40,7 @@ type pageData struct {
 	Tree             []feedTreeNode      // 左ペインの購読ツリーです
 	Items            []itemView          // 右ペインの記事リストです
 	ActiveItem       *itemView           // オーバーレイで開いている記事です
-	Boards           []domain.Board      // ボード一覧です
+	Bookmarks        []domain.Bookmark   // ブックマーク一覧です
 	Filters          []domain.MuteFilter // ミュートフィルタ一覧です
 	Settings         domain.Settings     // 設定画面で編集する設定です
 	Flash            string              // 操作結果の通知メッセージです
@@ -50,17 +50,20 @@ type pageData struct {
 	BulkRead         string              // 一括既読コントロールの表示範囲です。feedは表示中フィード、allは全フィード、noneは非表示を表します
 	CurrentFeedID    string              // 表示中フィードのIDです。BulkReadがfeedのときに使います
 	CurrentFeedTitle string              // 表示中フィードの名称です。一括既読ボタンのラベルに使います
-	CurrentLabel     string              // 右ペイン左上に出す、選択中の項目名です。すべて、既読、スター、あとで読む、フィード名のいずれかです
+	CurrentLabel     string              // 右ペイン左上に出す、選択中の項目名です。すべて、既読、ブックマーク、あとで読む、フィード名のいずれかです
 }
 
 // feedTreeNode 左ペインの購読ツリーの1ノードを表します。
 type feedTreeNode struct {
-	Kind        string // ノード種別です(all、unread、starred、readlater、category、feed、boardのいずれか)
-	ID          string // フィードやカテゴリやボードのIDです
-	Label       string // 表示名です
-	UnreadCount int    // 未読件数です
-	HasError    bool   // フィードがエラー状態かどうかです
-	Active      bool   // 現在選択中のノードかどうかです。選択中は左ペインで強調表示します
+	Kind           string         // ノード種別です(all、read、bookmark、bookmarkItem、readlater、category、feed のいずれか)
+	ID             string         // フィードやカテゴリやブックマークのIDです
+	Label          string         // 表示名です
+	UnreadCount    int            // 未読件数です
+	ItemCount      int            // 総件数です。ブックマーク子ノードの所属件数表示に使います
+	HasError       bool           // フィードがエラー状態かどうかです
+	Active         bool           // 現在選択中のノードかどうかです。選択中は左ペインで強調表示します
+	Children       []feedTreeNode // 展開時に表示する子ノードです。ブックマークノードの名称コレクションに使います
+	UnreadGroupEnd bool           // 未読フィード群の末尾かどうかです。次の通常フィード群との区切り線描画に使います
 }
 
 // itemView 右ペインとオーバーレイで描画する記事の表示モデルです。
@@ -74,8 +77,9 @@ type itemView struct {
 	Author      string        // 著者名です
 	PublishedAt string        // JST整形済みの公開日時です
 	Read        bool          // 既読かどうかです
-	Starred     bool          // スター済みかどうかです
+	Bookmarked  bool          // いずれかのブックマークに所属しているかどうかです
 	ReadLater   bool          // あとで読む済みかどうかです
+	UnreadStart bool          // 単一フィード表示で既読先頭群の直後、未読の開始位置かどうかです。区切り線描画に使います
 }
 
 // formatJST 時刻をJSTに変換して"2006-01-02 15:04"形式で返します。ゼロ値は空文字を返します。
