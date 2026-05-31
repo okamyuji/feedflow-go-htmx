@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -12,7 +13,7 @@ import (
 // すべてノードは未読を読む主ストリームのため未読合計を持たせます。
 // 既読ノードは既読記事をまとめて見るための入口で、件数バッジは持たせません。
 // ブックマークノードは全件への入口で、名称コレクションを子ノードとして開閉表示します。
-// 未読のあるフィードは更新日時の新しい順で先頭にまとめ、残りは購読順を保ちます。
+// フィードノードは設定の並び替えキーと方向に従って並べます。
 func (h *Handler) buildTree() ([]feedTreeNode, error) {
 	feeds, err := h.deps.Subscriptions.ListFeeds()
 	if err != nil {
@@ -38,7 +39,7 @@ func (h *Handler) buildTree() ([]feedTreeNode, error) {
 		return nil, err
 	}
 
-	feedNodes := orderFeedNodes(feeds, unreadByFeed)
+	feedNodes := orderFeedNodes(feeds, unreadByFeed, h.feedSortSettings())
 	nodes := make([]feedTreeNode, 0, 4+len(feedNodes))
 	nodes = append(nodes,
 		feedTreeNode{Kind: "all", Label: "すべて", UnreadCount: unreadTotal},
@@ -50,32 +51,50 @@ func (h *Handler) buildTree() ([]feedTreeNode, error) {
 	return nodes, nil
 }
 
-// orderFeedNodes フィードを「未読のある群(更新日時の新しい順)」「残り(購読順)」の順に並べたノード列を返します。
-// 未読群が空のときは購読順のまま返します。未読群の末尾ノードには区切り線用のフラグを立てます。
-func orderFeedNodes(feeds []domain.Feed, unreadByFeed map[string]int) []feedTreeNode {
-	unread := make([]domain.Feed, 0, len(feeds))
-	rest := make([]feedTreeNode, 0, len(feeds))
-	for _, f := range feeds {
-		if unreadByFeed[f.ID] > 0 {
-			unread = append(unread, f)
-			continue
-		}
-		rest = append(rest, feedNode(f, 0))
+// feedSortSettings 左ペインのフィード並び替え設定を返します。
+// テストなどでSettings依存が未注入のハンドラは既定値を使います。
+func (h *Handler) feedSortSettings() domain.Settings {
+	settings := domain.DefaultSettings()
+	if h.deps.Settings == nil {
+		return settings
 	}
-	// 未読フィードは最終更新日時の新しい順に並べます。
-	sort.SliceStable(unread, func(i, j int) bool {
-		return unread[i].LastFetchedAt.After(unread[j].LastFetchedAt)
-	})
+	loaded, err := h.deps.Settings.Get()
+	if err != nil {
+		slog.Error("failed to load settings, falling back to defaults", "error", err)
+		return settings
+	}
+	if !loaded.Valid() {
+		slog.Warn("loaded settings are invalid, falling back to defaults")
+		return settings
+	}
+	return loaded
+}
 
-	out := make([]feedTreeNode, 0, len(feeds))
-	for i, f := range unread {
-		n := feedNode(f, unreadByFeed[f.ID])
-		if i == len(unread)-1 && len(rest) > 0 {
-			n.UnreadGroupEnd = true
-		}
-		out = append(out, n)
+// orderFeedNodes フィードを設定のキーと方向で並べたノード列を返します。
+// registeredはリポジトリが返す購読順を基準にし、descなら後から登録したものを先に出します。
+func orderFeedNodes(feeds []domain.Feed, unreadByFeed map[string]int, settings domain.Settings) []feedTreeNode {
+	ordered := append([]domain.Feed(nil), feeds...)
+	if settings.FeedSortKey == domain.FeedSortTitle {
+		sort.SliceStable(ordered, func(i, j int) bool {
+			left := strings.ToLower(ordered[i].Title)
+			right := strings.ToLower(ordered[j].Title)
+			if left == right {
+				return ordered[i].Title < ordered[j].Title
+			}
+			return left < right
+		})
 	}
-	return append(out, rest...)
+	if settings.FeedSortDirection == domain.SortDesc {
+		for i, j := 0, len(ordered)-1; i < j; i, j = i+1, j-1 {
+			ordered[i], ordered[j] = ordered[j], ordered[i]
+		}
+	}
+
+	out := make([]feedTreeNode, 0, len(ordered))
+	for _, f := range ordered {
+		out = append(out, feedNode(f, unreadByFeed[f.ID]))
+	}
+	return out
 }
 
 // feedNode フィードから表示ノードを作ります。
@@ -216,12 +235,7 @@ func (h *Handler) feedSubscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to subscribe", http.StatusBadGateway)
 		return
 	}
-	data, err := h.treeData(r)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	h.renderPartial(w, http.StatusOK, "_tree_pane.html", data)
+	h.itemList(w, r)
 }
 
 // feedUnsubscribe 指定フィードの購読を解除し、属する記事も削除したうえでツリーペイン全体を部分更新で返します。

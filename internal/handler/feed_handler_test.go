@@ -159,10 +159,13 @@ func newAppHandler(t *testing.T, subs *stubSubscriptions, items *stubItems) *Han
 func TestFeedSubscribeWithFeedURL(t *testing.T) {
 	t.Parallel()
 	subs := &stubSubscriptions{}
-	h := newAppHandler(t, subs, &stubItems{items: map[string][]domain.Item{}})
+	h := newAppHandler(t, subs, &stubItems{items: map[string][]domain.Item{
+		"new": {{ID: "i1", FeedID: "new", Title: "購読直後の記事"}},
+	}})
 	form := url.Values{"url": {"https://example.com/feed.xml"}}
 	req := httptest.NewRequest(http.MethodPost, "/app/feeds", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
 	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
 	rec := httptest.NewRecorder()
 
@@ -174,8 +177,12 @@ func TestFeedSubscribeWithFeedURL(t *testing.T) {
 	if subs.subscribed.FeedURL != "https://example.com/feed.xml" {
 		t.Fatalf("subscribed FeedURL got %q", subs.subscribed.FeedURL)
 	}
-	if !strings.Contains(rec.Body.String(), "tree") {
-		t.Fatalf("body should render tree partial: %q", rec.Body.String())
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="item-list"`) || !strings.Contains(body, "購読直後の記事") {
+		t.Fatalf("subscribe should render the refreshed item list as the primary response: %q", body)
+	}
+	if !strings.Contains(body, `id="tree-pane"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Fatalf("subscribe should include a tree pane out-of-band refresh: %q", body)
 	}
 }
 
@@ -186,6 +193,7 @@ func TestFeedSubscribeWithSiteURLFallback(t *testing.T) {
 	form := url.Values{"url": {"https://example.com/"}, "from_site": {"true"}}
 	req := httptest.NewRequest(http.MethodPost, "/app/feeds", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
 	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
 	rec := httptest.NewRecorder()
 
@@ -281,5 +289,65 @@ func TestBuildTreeCountsUnreadStream(t *testing.T) {
 	}
 	if feed.UnreadCount != 2 {
 		t.Fatalf("feed node unread count got %d want 2", feed.UnreadCount)
+	}
+}
+
+func TestOrderFeedNodesUsesConfiguredSort(t *testing.T) {
+	t.Parallel()
+	feeds := []domain.Feed{
+		{ID: "f1", Title: "Zulu"},
+		{ID: "f2", Title: "alpha"},
+		{ID: "f3", Title: "Beta"},
+	}
+	unread := map[string]int{"f2": 3}
+
+	tests := []struct {
+		name     string
+		settings domain.Settings
+		want     []string
+	}{
+		{
+			name:     "default title asc",
+			settings: domain.DefaultSettings(),
+			want:     []string{"alpha", "Beta", "Zulu"},
+		},
+		{
+			name: "title desc",
+			settings: func() domain.Settings {
+				s := domain.DefaultSettings()
+				s.FeedSortDirection = domain.SortDesc
+				return s
+			}(),
+			want: []string{"Zulu", "Beta", "alpha"},
+		},
+		{
+			name: "registered desc",
+			settings: func() domain.Settings {
+				s := domain.DefaultSettings()
+				s.FeedSortKey = domain.FeedSortRegistered
+				s.FeedSortDirection = domain.SortDesc
+				return s
+			}(),
+			want: []string{"Beta", "alpha", "Zulu"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			nodes := orderFeedNodes(feeds, unread, tt.settings)
+			got := make([]string, 0, len(nodes))
+			for _, n := range nodes {
+				got = append(got, n.Label)
+			}
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Fatalf("order got %v want %v", got, tt.want)
+			}
+			for _, n := range nodes {
+				if n.ID == "f2" && n.UnreadCount != 3 {
+					t.Fatalf("unread count for f2 got %d want 3", n.UnreadCount)
+				}
+			}
+		})
 	}
 }

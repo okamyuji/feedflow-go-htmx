@@ -34,8 +34,8 @@
   <form
     class="subscribe-form"
     hx-post="/app/feeds"
-    hx-target="#tree-pane"
-    hx-swap="outerHTML"
+    hx-target="#main-pane"
+    hx-swap="innerHTML"
   >
     <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
     <input class="field-input" type="url" name="url" placeholder="フィードURLまたはサイトURL" required>

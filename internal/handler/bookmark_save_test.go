@@ -40,6 +40,9 @@ func TestItemBookmarkSaveRendersPicker(t *testing.T) {
 	if strings.Contains(body, "保存済み") {
 		t.Fatalf("「保存済み」のテキスト表示は廃止したため出してはいけません: %q", body)
 	}
+	if !strings.Contains(body, `id="tree-pane"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Fatalf("保存時は左ツリーの未読数をOOB更新すべき: %q", body)
+	}
 }
 
 // TestItemBookmarkUnsetRemovesCardInBookmarkView ブックマークビューでの解除はピッカー更新に加え、
@@ -70,6 +73,9 @@ func TestItemBookmarkUnsetRemovesCardInBookmarkView(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, `hx-swap-oob="delete"`) || !strings.Contains(body, `id="item-i1"`) {
 		t.Fatalf("ブックマークビューでの解除は当該カードを除去するOOBを返すべき: %q", body)
+	}
+	if !strings.Contains(body, `id="tree-pane"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Fatalf("解除時は左ツリーの未読数をOOB更新すべき: %q", body)
 	}
 }
 

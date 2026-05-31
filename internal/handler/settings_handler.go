@@ -57,13 +57,15 @@ func (h *Handler) settingsUpdate(w http.ResponseWriter, r *http.Request) {
 		Theme:             domain.Theme(r.FormValue("theme")),
 		DefaultView:       domain.ViewMode(r.FormValue("default_view")),
 		AutoReadOnScroll:  r.FormValue("auto_read_on_scroll") != "",
+		FeedSortKey:       domain.FeedSortKey(r.FormValue("feed_sort_key")),
+		FeedSortDirection: domain.SortDirection(r.FormValue("feed_sort_direction")),
 	}
 	if err := h.deps.Settings.Update(settings); err != nil {
 		h.renderSettingsError(w, sess, "設定を保存できませんでした。入力値を確認してください")
 		return
 	}
 	data := pageData{CSRFToken: sess.CSRFToken, Settings: settings, Flash: "設定を保存しました"}
-	h.renderPartial(w, http.StatusOK, "_settings.html", data)
+	h.renderWithTreeOOB(w, r, http.StatusOK, "_settings.html", data)
 }
 
 // renderSettingsError 設定の保存失敗を現在値とともに画面へ表示します。

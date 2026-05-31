@@ -79,6 +79,34 @@ func (t Theme) Valid() bool {
 	return t == ThemeDark || t == ThemeLight
 }
 
+// FeedSortKey 左ペインのフィード並び替えキーを表す値オブジェクトです。
+type FeedSortKey string
+
+// フィード並び替えキーの取りうる値です。
+const (
+	FeedSortTitle      FeedSortKey = "title"      // フィードタイトルで並べます
+	FeedSortRegistered FeedSortKey = "registered" // 登録順で並べます
+)
+
+// Valid フィード並び替えキーが定義済みの値かどうかを返します。
+func (k FeedSortKey) Valid() bool {
+	return k == FeedSortTitle || k == FeedSortRegistered
+}
+
+// SortDirection 並び替え方向を表す値オブジェクトです。
+type SortDirection string
+
+// 並び替え方向の取りうる値です。
+const (
+	SortAsc  SortDirection = "asc"  // 昇順です
+	SortDesc SortDirection = "desc" // 降順です
+)
+
+// Valid 並び替え方向が定義済みの値かどうかを返します。
+func (d SortDirection) Valid() bool {
+	return d == SortAsc || d == SortDesc
+}
+
 // MuteScope ミュートフィルタの対象範囲を表す値オブジェクトです。
 type MuteScope string
 
