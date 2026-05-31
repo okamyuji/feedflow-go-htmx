@@ -23,6 +23,12 @@ func TestDefaultSettings(t *testing.T) {
 	if !s.AutoReadOnScroll {
 		t.Fatalf("AutoReadOnScroll got %v want true", s.AutoReadOnScroll)
 	}
+	if s.FeedSortKey != FeedSortTitle {
+		t.Fatalf("FeedSortKey got %q want %q", s.FeedSortKey, FeedSortTitle)
+	}
+	if s.FeedSortDirection != SortAsc {
+		t.Fatalf("FeedSortDirection got %q want %q", s.FeedSortDirection, SortAsc)
+	}
 	if !s.Valid() {
 		t.Fatalf("DefaultSettings() must be valid")
 	}
@@ -52,7 +58,14 @@ func TestSettingsValid(t *testing.T) {
 		{name: "ポーリング間隔 不正値", mutate: func(s Settings) Settings { s.PollInterval = "weekly"; return s }, want: false},
 		{name: "テーマ 不正値", mutate: func(s Settings) Settings { s.Theme = "neon"; return s }, want: false},
 		{name: "表示形式 不正値", mutate: func(s Settings) Settings { s.DefaultView = "grid"; return s }, want: false},
+		{name: "フィード並び替えキー 不正値", mutate: func(s Settings) Settings { s.FeedSortKey = "updated"; return s }, want: false},
+		{name: "フィード並び替え方向 不正値", mutate: func(s Settings) Settings { s.FeedSortDirection = "sideways"; return s }, want: false},
 		{name: "ポーリング間隔 manual も妥当", mutate: func(s Settings) Settings { s.PollInterval = PollManualOnly; return s }, want: true},
+		{name: "登録順 降順 も妥当", mutate: func(s Settings) Settings {
+			s.FeedSortKey = FeedSortRegistered
+			s.FeedSortDirection = SortDesc
+			return s
+		}, want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

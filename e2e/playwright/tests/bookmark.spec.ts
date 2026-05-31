@@ -55,6 +55,22 @@ test.describe("ブックマーク", () => {
     await expect(page.locator(".item-list li.item-card")).toHaveCount(1);
   });
 
+  test("新規ラベルは再読込なしで左メニューと別記事のピッカーに反映される", async ({ page }) => {
+    const first = page.locator(".item-list li.item-card").first();
+    await first.locator(".bookmark-btn").click();
+    const input = first.locator(".bookmark-panel .bookmark-create-input");
+    await input.fill("即時反映ラベル");
+    await input.press("Enter");
+    await expect(first.locator(".bookmark-panel .bookmark-save-btn")).toHaveClass(/is-saved/);
+
+    await page.locator(".tree-bookmark .tree-disclosure").click();
+    await expect(page.locator(".tree-sub a.tree-link", { hasText: "即時反映ラベル" })).toBeVisible();
+
+    const second = page.locator(".item-list li.item-card").nth(1);
+    await second.locator(".bookmark-btn").click();
+    await expect(second.locator(".bookmark-panel .bookmark-option", { hasText: "即時反映ラベル" })).toBeVisible();
+  });
+
   test("オーバーレイでブックマークするとボタン表示が即時同期する", async ({ page }) => {
     await page.click(".item-list li.item-card a.item-open >> nth=0");
     await expect(page.locator("#reading-overlay")).toBeVisible();

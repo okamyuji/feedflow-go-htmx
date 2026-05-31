@@ -32,11 +32,14 @@ export const SAMPLE_RSS = `<?xml version="1.0" encoding="UTF-8"?>
 </rss>`;
 
 // startFeedServer はテスト用のフィード配信HTTPサーバを起動してURLを返します。
-export async function startFeedServer(): Promise<{ url: string; close: () => Promise<void> }> {
+export async function startFeedServer(
+  title = "E2E Sample Feed",
+): Promise<{ url: string; close: () => Promise<void> }> {
+  const rss = SAMPLE_RSS.replace("<title>E2E Sample Feed</title>", `<title>${title}</title>`);
   const server: Server = createServer((req, res) => {
     if (req.url === "/feed.xml") {
       res.writeHead(200, { "Content-Type": "application/rss+xml; charset=utf-8" });
-      res.end(SAMPLE_RSS);
+      res.end(rss);
       return;
     }
     res.writeHead(404, { "Content-Type": "text/plain" });

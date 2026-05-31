@@ -60,7 +60,7 @@ func TestBookmarkPickerRendersOptions(t *testing.T) {
 
 func TestBookmarkToggle(t *testing.T) {
 	t.Parallel()
-	items := &stubItems{items: map[string][]domain.Item{"f1": {{ID: "i1", FeedID: "f1"}}}}
+	items := &stubItems{items: map[string][]domain.Item{"f1": {{ID: "i1", FeedID: "f1", Bookmarked: true, BookmarkIDs: []string{"b1"}}}}}
 	bookmarks := &stubBookmarks{list: []domain.Bookmark{{ID: "b1", Name: "あとで実装する"}}}
 	h := newBookmarkHandler(t, items, bookmarks)
 
@@ -79,6 +79,9 @@ func TestBookmarkToggle(t *testing.T) {
 	}
 	if bookmarks.toggled != "b1" || bookmarks.lastItemID != "i1" {
 		t.Fatalf("toggle should record b1/i1 got %q/%q", bookmarks.toggled, bookmarks.lastItemID)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `id="tree-pane"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Fatalf("toggle should refresh the tree out-of-band so unread counts and labels stay current: %q", body)
 	}
 }
 
@@ -104,5 +107,8 @@ func TestBookmarkCreate(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "新ブックマーク") {
 		t.Fatalf("再描画されたピッカーに新規名称が含まれるべき: %q", rec.Body.String())
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `id="tree-pane"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Fatalf("create should refresh the tree out-of-band so the new label appears without reload: %q", body)
 	}
 }
