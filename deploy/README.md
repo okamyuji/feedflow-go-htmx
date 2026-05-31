@@ -27,7 +27,7 @@ AWS の単一 EC2(ARM の t4g 系)と Cloudflare を terraform でまとめて�
 
 ## 前提
 
-- AWS は IAM Identity Center の SSO で認証します。長期アクセスキーは使いません。`aws sso login --profile <profile>` で都度ログインし、以降のコマンドに `AWS_PROFILE=<profile>` を付けます
+- AWS は IAM Identity Center の SSO で認証します。長期アクセスキーは使いません。`aws sso login --profile <profile>` で都度ログインし、`aws_profile` を `secrets.auto.tfvars` に設定します
 - Cloudflare で対象ゾーン(例 okamyuji.work)を管理済みで、Zero Trust(Access)を有効化済みであること
 - terraform 1.6 以降、AWS CLI v2、ローカルに git があること
 
@@ -47,7 +47,7 @@ AWS の単一 EC2(ARM の t4g 系)と Cloudflare を terraform でまとめて�
 ```bash
 cd deploy/terraform
 cp secrets.auto.tfvars.example secrets.auto.tfvars
-# エディタで cloudflare_api_token と cloudflare_account_id を記入する
+# エディタで cloudflare_api_token と cloudflare_account_id と aws_profile を記入する
 ```
 
 ## 2 変数の既定値
@@ -55,7 +55,8 @@ cp secrets.auto.tfvars.example secrets.auto.tfvars
 `variables.tf` の既定は次のとおりです。必要なら secrets.auto.tfvars や別の tfvars で上書きします。
 
 - `region` ap-northeast-1
-- `instance_type` t4g.small
+- `aws_profile` 空文字。SSO 運用では secrets.auto.tfvars に AWS CLI プロファイル名を書く
+- `instance_type` t4g.micro
 - `zone_name` okamyuji.work
 - `hostname` feedflow.okamyuji.work
 - `access_owner_email` okamyuji@gmail.com
@@ -67,9 +68,9 @@ cp secrets.auto.tfvars.example secrets.auto.tfvars
 cd deploy/terraform
 aws sso login --profile <profile>
 
-AWS_PROFILE=<profile> terraform init
-AWS_PROFILE=<profile> terraform plan
-AWS_PROFILE=<profile> terraform apply
+terraform init
+terraform plan
+terraform apply
 ```
 
 apply で作成されるものは、Elastic IP 付きの EC2 と追加 EBS、Cloudflare の A レコード(プロキシ ON)、SSL モード Full(strict)、Origin CA 証明書、Zero Trust Access のアプリと所有者許可ポリシー、Cloudflare IP に限定したセキュリティグループです。アプリは SSH プロビジョナで配送し EC2 上で docker compose ビルドします。Amazon Linux 2023 の既定 buildx は古く compose build が 0.17.0 以上を要求するため、最新 buildx を起動時に手動導入します。
@@ -77,7 +78,7 @@ apply で作成されるものは、Elastic IP 付きの EC2 と追加 EBS、Clo
 ## 4 出力と動作確認
 
 ```bash
-AWS_PROFILE=<profile> terraform output
+terraform output
 ```
 
 主な出力は次のとおりです。
@@ -95,7 +96,7 @@ AWS_PROFILE=<profile> terraform output
 アプリのソースを変更したら、同じ apply を再実行します。バンドルのハッシュが変わると EC2 でイメージを再ビルドしてコンテナを再起動します。静的資産は URL にコンテンツハッシュを付けているため、ブラウザと Cloudflare エッジは確実に最新を取得します。
 
 ```bash
-AWS_PROFILE=<profile> terraform apply
+terraform apply
 ```
 
 ## 6 バックアップ
@@ -105,7 +106,7 @@ data ディレクトリは EBS 上の `/mnt/feedflow-data` にあります。EBS
 ## 7 取り消し
 
 ```bash
-AWS_PROFILE=<profile> terraform destroy
+terraform destroy
 ```
 
 AWS と Cloudflare の双方の作成物をまとめて削除します。

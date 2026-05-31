@@ -6,10 +6,16 @@ variable "region" {
   default     = "ap-northeast-1"
 }
 
+variable "aws_profile" {
+  description = "Terraformが使うAWS CLIプロファイル名です。空ならAWS SDKの既定解決順に任せます。SSO運用ではsecrets.auto.tfvarsで明示します。"
+  type        = string
+  default     = ""
+}
+
 variable "instance_type" {
   description = "EC2インスタンスタイプを指定します。ARM64のt4g系を前提とします。"
   type        = string
-  default     = "t4g.small"
+  default     = "t4g.micro"
 }
 
 variable "data_volume_size" {
