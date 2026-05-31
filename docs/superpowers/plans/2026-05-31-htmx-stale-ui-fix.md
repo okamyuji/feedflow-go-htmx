@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Lock Subscribe Response Behavior
+## Task 1: Lock Subscribe Response Behavior
 
 **Files:**
 - Modify: `internal/handler/feed_handler_test.go`
@@ -22,7 +22,7 @@
 - [ ] Change `feedSubscribe` to render `_item_list.html` for the all-items view and append `_tree_pane.html` with `hx-swap-oob="true"`.
 - [ ] Run `go test ./internal/handler/ -run 'TestFeedSubscribe|TestParseTemplates' -v`.
 
-### Task 2: Lock Bookmark Tree Refresh Behavior
+## Task 2: Lock Bookmark Tree Refresh Behavior
 
 **Files:**
 - Modify: `internal/handler/bookmark_handler_test.go`
@@ -34,7 +34,7 @@
 - [ ] Keep bookmark-view removal behavior intact by appending the existing delete OOB fragment when unbookmarking in bookmark views.
 - [ ] Run `go test ./internal/handler/ -run 'TestBookmark|TestItemBookmark' -v`.
 
-### Task 3: Browser And Gate Verification
+## Task 3: Browser And Gate Verification
 
 **Files:**
 - Modify: `e2e/playwright/tests/subscription.spec.ts`
@@ -47,7 +47,7 @@
 - [ ] Run `make quality`.
 - [ ] Commit, push branch, and open PR.
 
-### Task 4: Configurable Feed Sorting
+## Task 4: Configurable Feed Sorting
 
 **Files:**
 - Modify: `internal/domain/types.go`
