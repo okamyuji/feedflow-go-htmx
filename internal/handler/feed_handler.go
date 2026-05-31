@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -57,10 +58,16 @@ func (h *Handler) feedSortSettings() domain.Settings {
 	if h.deps.Settings == nil {
 		return settings
 	}
-	if loaded, err := h.deps.Settings.Get(); err == nil && loaded.Valid() {
-		return loaded
+	loaded, err := h.deps.Settings.Get()
+	if err != nil {
+		slog.Error("failed to load settings, falling back to defaults", "error", err)
+		return settings
 	}
-	return settings
+	if !loaded.Valid() {
+		slog.Warn("loaded settings are invalid, falling back to defaults")
+		return settings
+	}
+	return loaded
 }
 
 // orderFeedNodes フィードを設定のキーと方向で並べたノード列を返します。
