@@ -37,7 +37,8 @@ terraform {
 }
 
 provider "aws" {
-  region = var.region
+  region  = var.region
+  profile = var.aws_profile != "" ? var.aws_profile : null
 }
 
 # CloudflareプロバイダですDNSとゾーン設定とAccessとOrigin CA証明書の発行をすべてAPIトークンで
