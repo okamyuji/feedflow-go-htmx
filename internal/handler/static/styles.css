@@ -474,7 +474,7 @@ body {
   }
 
   .item-list[data-view="magazine"] .item-cards {
-    grid-template-columns: 1.35fr 1fr;
+    grid-template-columns: repeat(2, 1fr);
     align-items: start;
   }
 }
@@ -530,6 +530,7 @@ body {
 }
 
 .item-list[data-view="magazine"] .item-card:first-of-type {
+  grid-column: 1 / -1;
   padding: var(--space-3);
 }
 

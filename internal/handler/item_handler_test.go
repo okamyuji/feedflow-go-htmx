@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 )
+
+var errSettingsUnavailable = errors.New("settings unavailable")
 
 func sampleItems() map[string][]domain.Item {
 	return map[string][]domain.Item{
@@ -85,6 +88,26 @@ func TestItemListUsesSavedDefaultView(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `data-view="magazine"`) {
 		t.Fatalf("item list should use saved default view: %q", rec.Body.String())
+	}
+}
+
+func TestItemListFallsBackToDefaultViewWhenSettingsFail(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	items := &stubItems{items: sampleItems()}
+	h := newAppHandlerWithSettings(t, subs, items, &stubSettings{getErr: errSettingsUnavailable})
+	req := httptest.NewRequest(http.MethodGet, "/app/items", nil)
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemList(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), `data-view="card"`) {
+		t.Fatalf("item list should fall back to default view: %q", rec.Body.String())
 	}
 }
 
