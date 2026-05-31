@@ -218,6 +218,18 @@ func cleanArticleHTML(raw string) template.HTML {
 	return template.HTML(sb.String()) //nolint:gosec // 各段落はHTMLEscapeStringでエスケープ済みのため安全です
 }
 
+// defaultView 設定済みの記事リスト表示形式を返します。設定依存が無いテストや取得失敗時は既定値を使います。
+func (h *Handler) defaultView() domain.ViewMode {
+	if h.deps.Settings == nil {
+		return domain.DefaultSettings().DefaultView
+	}
+	settings, err := h.deps.Settings.Get()
+	if err != nil || !settings.DefaultView.Valid() {
+		return domain.DefaultSettings().DefaultView
+	}
+	return settings.DefaultView
+}
+
 // itemList 記事一覧の部分テンプレートを描画します。
 func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFromContext(r.Context())
@@ -235,9 +247,10 @@ func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 		views = append(views, v)
 	}
 	scope, feedID, feedTitle := h.bulkReadContext(r)
+	defaultView := h.defaultView()
 	data := pageData{
 		CSRFToken:        sess.CSRFToken,
-		DefaultView:      domain.ViewCard,
+		DefaultView:      defaultView,
 		Items:            views,
 		BulkRead:         scope,
 		CurrentFeedID:    feedID,

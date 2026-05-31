@@ -78,4 +78,21 @@ test.describe("購読追加と記事一覧", () => {
       await zulu.close();
     }
   });
+
+  test("設定した既定の表示形式が記事一覧と再読込後に反映される", async ({ page }) => {
+    await setupAndLogin(page);
+    await addFeed(page, feed.url);
+
+    for (const view of ["title", "card", "magazine", "article"]) {
+      await page.getByRole("link", { name: "設定" }).click();
+      await page.locator('select[name="default_view"]').selectOption(view);
+      await page.locator(".settings-form button[type='submit']").click();
+
+      await page.locator(".tree-all .tree-link").click();
+      await expect(page.locator(".item-list")).toHaveAttribute("data-view", view);
+
+      await page.reload();
+      await expect(page.locator(".item-list")).toHaveAttribute("data-view", view);
+    }
+  });
 });

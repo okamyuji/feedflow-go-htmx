@@ -18,11 +18,17 @@ import (
 // stubSettings SettingsServiceのスタブです。
 type stubSettings struct {
 	current   domain.Settings
+	getErr    error
 	updateErr error
 	updated   domain.Settings
 }
 
-func (s *stubSettings) Get() (domain.Settings, error) { return s.current, nil }
+func (s *stubSettings) Get() (domain.Settings, error) {
+	if s.getErr != nil {
+		return domain.Settings{}, s.getErr
+	}
+	return s.current, nil
+}
 func (s *stubSettings) Update(settings domain.Settings) error {
 	if s.updateErr != nil {
 		return s.updateErr
