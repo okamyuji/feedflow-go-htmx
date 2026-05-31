@@ -116,6 +116,18 @@ func (h *Handler) renderBookmarkPicker(w http.ResponseWriter, r *http.Request, f
 		oob := fmt.Sprintf(`<li id="item-%s" hx-swap-oob="delete"></li>`, template.HTMLEscapeString(itemID))
 		buf.WriteString(oob)
 	}
+	tree, err := h.treeData(r)
+	if err != nil {
+		slog.Error("failed to build tree for bookmark picker oob swap", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	tree.TreeOOB = true
+	if err := h.templates.ExecuteTemplate(&buf, "_tree_pane.html", tree); err != nil {
+		slog.Error("failed to execute template", "template", "_tree_pane.html", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	if _, err := buf.WriteTo(w); err != nil {

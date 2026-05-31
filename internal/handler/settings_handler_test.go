@@ -50,6 +50,10 @@ func (s *stubOPML) Export() ([]byte, error) { return s.exportOut, nil }
 func newSettingsHandler(t *testing.T, st *stubSettings, op *stubOPML) *Handler {
 	t.Helper()
 	h, err := New(Deps{
+		Subscriptions:     &stubSubscriptions{},
+		Items:             &stubItems{items: map[string][]domain.Item{}},
+		Bookmarks:         &stubBookmarks{},
+		Mutes:             &stubMutes{},
 		Settings:          st,
 		OPML:              op,
 		Sessions:          &stubSessions{username: "owner", ok: true},
@@ -91,6 +95,8 @@ func TestSettingsUpdateSuccess(t *testing.T) {
 		"read_retention_days": {"14"},
 		"theme":               {"light"},
 		"default_view":        {"magazine"},
+		"feed_sort_key":       {"registered"},
+		"feed_sort_direction": {"desc"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/app/settings", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -107,6 +113,15 @@ func TestSettingsUpdateSuccess(t *testing.T) {
 	}
 	if st.updated.Theme != domain.ThemeLight {
 		t.Fatalf("updated Theme got %q want %q", st.updated.Theme, domain.ThemeLight)
+	}
+	if st.updated.FeedSortKey != domain.FeedSortRegistered {
+		t.Fatalf("updated FeedSortKey got %q want %q", st.updated.FeedSortKey, domain.FeedSortRegistered)
+	}
+	if st.updated.FeedSortDirection != domain.SortDesc {
+		t.Fatalf("updated FeedSortDirection got %q want %q", st.updated.FeedSortDirection, domain.SortDesc)
+	}
+	if !strings.Contains(rec.Body.String(), `hx-swap-oob="true"`) {
+		t.Fatalf("settings update should refresh the tree order out-of-band: %q", rec.Body.String())
 	}
 }
 
@@ -131,6 +146,8 @@ func TestSettingsUpdateAutoReadCheckbox(t *testing.T) {
 				"read_retention_days": {"14"},
 				"theme":               {"dark"},
 				"default_view":        {"card"},
+				"feed_sort_key":       {"title"},
+				"feed_sort_direction": {"asc"},
 			}
 			if tc.checkbox != nil {
 				form["auto_read_on_scroll"] = tc.checkbox
@@ -167,6 +184,9 @@ func TestSettingsPageRendersAutoReadCheckbox(t *testing.T) {
 	if !strings.Contains(body, `name="auto_read_on_scroll"`) {
 		t.Fatalf("settings should render the auto read checkbox: %q", body)
 	}
+	if !strings.Contains(body, `name="feed_sort_key"`) || !strings.Contains(body, `name="feed_sort_direction"`) {
+		t.Fatalf("settings should render feed sort controls: %q", body)
+	}
 	if !strings.Contains(body, "checked") {
 		t.Fatalf("default settings should check the auto read box: %q", body)
 	}
@@ -182,6 +202,8 @@ func TestSettingsUpdateInvalidShowsError(t *testing.T) {
 		"read_retention_days": {"30"},
 		"theme":               {"dark"},
 		"default_view":        {"card"},
+		"feed_sort_key":       {"title"},
+		"feed_sort_direction": {"asc"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/app/settings", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
