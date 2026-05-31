@@ -66,6 +66,28 @@ func TestItemListAllViewHidesRead(t *testing.T) {
 	}
 }
 
+func TestItemListUsesSavedDefaultView(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	items := &stubItems{items: sampleItems()}
+	settings := domain.DefaultSettings()
+	settings.DefaultView = domain.ViewMagazine
+	h := newAppHandlerWithSettings(t, subs, items, &stubSettings{current: settings})
+	req := httptest.NewRequest(http.MethodGet, "/app/items", nil)
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemList(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), `data-view="magazine"`) {
+		t.Fatalf("item list should use saved default view: %q", rec.Body.String())
+	}
+}
+
 func TestItemListReadViewShowsOnlyRead(t *testing.T) {
 	t.Parallel()
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
