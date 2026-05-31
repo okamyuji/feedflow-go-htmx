@@ -47,7 +47,7 @@ AWS の単一 EC2(ARM の t4g 系)と Cloudflare を terraform でまとめて�
 ```bash
 cd deploy/terraform
 cp secrets.auto.tfvars.example secrets.auto.tfvars
-# エディタで cloudflare_api_token と cloudflare_account_id と aws_profile を記入する
+# エディタで cloudflare_api_token と cloudflare_account_id と aws_profile と access_owner_email を記入する
 ```
 
 ## 2 変数の既定値
@@ -59,7 +59,7 @@ cp secrets.auto.tfvars.example secrets.auto.tfvars
 - `instance_type` t4g.micro
 - `zone_name` okamyuji.work
 - `hostname` feedflow.okamyuji.work
-- `access_owner_email` owner@example.com
+- `access_owner_email` owner@example.com。実際の許可メールアドレスは secrets.auto.tfvars で上書きする
 - `ssh_ingress_cidr` 空のときは実行環境のグローバル IP の /32 を自動で使う
 
 ## 3 init と plan と apply
