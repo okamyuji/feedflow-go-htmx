@@ -56,6 +56,9 @@ func TestBookmarkPickerRendersOptions(t *testing.T) {
 	if !strings.Contains(body, "ブックマーク解除") {
 		t.Fatalf("保存済みの記事はピッカーに解除ボタンを出すべき: %q", body)
 	}
+	if strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Fatalf("ピッカー表示だけのGETではツリーOOBを返して選択中ノードをリセットしてはいけません: %q", body)
+	}
 }
 
 func TestBookmarkToggle(t *testing.T) {

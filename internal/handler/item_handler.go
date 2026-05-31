@@ -368,7 +368,7 @@ func (h *Handler) itemBookmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	removeFromList := !bookmarked && isBookmarkViewURL(r)
-	h.renderBookmarkPicker(w, r, feedID, itemID, removeFromList)
+	h.renderBookmarkPicker(w, r, feedID, itemID, removeFromList, true)
 }
 
 // itemReadLater あとで読む状態を設定し、オーバーレイのアクション群を再描画します。
