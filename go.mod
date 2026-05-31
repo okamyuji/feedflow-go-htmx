@@ -1,6 +1,6 @@
 module github.com/okamyuji/feedflow-go-htmx
 
-go 1.25.0
+go 1.25.10
 
 require (
 	golang.org/x/crypto v0.52.0

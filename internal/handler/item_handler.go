@@ -34,6 +34,7 @@ func (h *Handler) listItemsFor(r *http.Request) (items []domain.Item, unreadStar
 	case "read":
 		// ブックマーク済みは保管済みとして既読/未読管理の対象外にするため、既読ビューにも出しません。
 		items = keepItems(items, func(it domain.Item) bool { return it.Read && !isBookmarked(it) })
+		sortItemsByRecency(items)
 	case "bookmark":
 		// 保存済み(Bookmarked)の記事を出します。ラベルが無くても保存していれば対象です。
 		items = keepItems(items, func(it domain.Item) bool { return it.Bookmarked })
@@ -110,12 +111,7 @@ func withReadHead(items []domain.Item, limit int) ([]domain.Item, int) {
 	}
 
 	// 既読は直近(公開日時の新しい順)を優先して先頭へ載せます。
-	sort.SliceStable(read, func(i, j int) bool {
-		if read[i].PublishedAt.Equal(read[j].PublishedAt) {
-			return read[i].FetchedAt.After(read[j].FetchedAt)
-		}
-		return read[i].PublishedAt.After(read[j].PublishedAt)
-	})
+	sortItemsByRecency(read)
 	if len(read) > limit {
 		read = read[:limit]
 	}
@@ -128,6 +124,17 @@ func withReadHead(items []domain.Item, limit int) ([]domain.Item, int) {
 		unreadStart = len(read)
 	}
 	return out, unreadStart
+}
+
+// sortItemsByRecency 記事を公開日時の新しい順へ並べ替えます。
+// 公開日時が等しいときは取得日時の新しい順を二次キーにします。
+func sortItemsByRecency(items []domain.Item) {
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].PublishedAt.Equal(items[j].PublishedAt) {
+			return items[i].FetchedAt.After(items[j].FetchedAt)
+		}
+		return items[i].PublishedAt.After(items[j].PublishedAt)
+	})
 }
 
 // isBookmarked 記事がいずれかのブックマークに所属しているかどうかを返します。

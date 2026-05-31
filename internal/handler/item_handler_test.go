@@ -134,6 +134,53 @@ func TestItemListReadViewShowsOnlyRead(t *testing.T) {
 	}
 }
 
+func TestItemListReadViewOrdersByPublishedAtDescending(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	subs := &stubSubscriptions{feeds: []domain.Feed{
+		{ID: "older-feed", Title: "older"},
+		{ID: "newer-feed", Title: "newer"},
+	}}
+	h := newAppHandler(t, subs, &stubItems{items: map[string][]domain.Item{
+		"older-feed": {
+			{
+				ID:          "old",
+				FeedID:      "older-feed",
+				Title:       "古い既読",
+				Read:        true,
+				PublishedAt: now.Add(-24 * time.Hour),
+				FetchedAt:   now.Add(-23 * time.Hour),
+			},
+		},
+		"newer-feed": {
+			{
+				ID:          "new",
+				FeedID:      "newer-feed",
+				Title:       "新しい既読",
+				Read:        true,
+				PublishedAt: now,
+				FetchedAt:   now,
+			},
+		},
+	}})
+	req := httptest.NewRequest(http.MethodGet, "/app/items?view=read", nil)
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemList(rec, req)
+
+	body := rec.Body.String()
+	newerIndex := strings.Index(body, "新しい既読")
+	olderIndex := strings.Index(body, "古い既読")
+	if newerIndex == -1 || olderIndex == -1 {
+		t.Fatalf("既読ビューは新旧どちらの記事も表示すべきです: %q", body)
+	}
+	if newerIndex > olderIndex {
+		t.Fatalf("既読ビューは公開日時の新しい順に表示すべきです: %q", body)
+	}
+}
+
 func TestItemOverlayRendersContent(t *testing.T) {
 	t.Parallel()
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
