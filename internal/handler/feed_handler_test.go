@@ -141,7 +141,12 @@ func (s *stubMutes) Filter(items []domain.Item) ([]domain.Item, error) { return 
 
 func newAppHandler(t *testing.T, subs *stubSubscriptions, items *stubItems) *Handler {
 	t.Helper()
-	h, err := New(Deps{
+	return newAppHandlerWithSettings(t, subs, items, nil)
+}
+
+func newAppHandlerWithSettings(t *testing.T, subs *stubSubscriptions, items *stubItems, settings *stubSettings) *Handler {
+	t.Helper()
+	deps := Deps{
 		Subscriptions:     subs,
 		Items:             items,
 		Bookmarks:         &stubBookmarks{},
@@ -149,7 +154,11 @@ func newAppHandler(t *testing.T, subs *stubSubscriptions, items *stubItems) *Han
 		Sessions:          &stubSessions{username: "owner", ok: true},
 		CSRF:              &stubCSRF{ok: true, token: "tok"},
 		SessionCookieName: "feedflow_session",
-	})
+	}
+	if settings != nil {
+		deps.Settings = settings
+	}
+	h, err := New(deps)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
