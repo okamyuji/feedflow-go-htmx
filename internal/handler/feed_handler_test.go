@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -140,9 +141,10 @@ func (s *stubMutes) DeleteFilter(_ string) error                       { return 
 func (s *stubMutes) Filter(items []domain.Item) ([]domain.Item, error) { return items, nil }
 
 type stubPoll struct {
-	polledFeedID string
-	polledAll    bool
-	err          error
+	polledFeedID       string
+	polledAll          bool
+	pollAllHadDeadline bool
+	err                error
 }
 
 func (s *stubPoll) PollFeed(_ context.Context, feedID string) (int, error) {
@@ -157,8 +159,9 @@ func (s *stubPoll) PollAll(_ context.Context) (int, error) {
 	return 0, nil
 }
 
-func (s *stubPoll) PollAllNow(_ context.Context) (int, error) {
+func (s *stubPoll) PollAllNow(ctx context.Context) (int, error) {
 	s.polledAll = true
+	_, s.pollAllHadDeadline = ctx.Deadline()
 	if s.err != nil {
 		return 0, s.err
 	}
@@ -384,6 +387,51 @@ func TestFeedPollAllRefreshesCurrentView(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "全体更新後の記事") {
 		t.Fatalf("poll should render the current item list: %q", rec.Body.String())
+	}
+}
+
+func TestFeedPollAllUsesBoundedContext(t *testing.T) {
+	t.Parallel()
+	poll := &stubPoll{}
+	h := newAppHandler(t, &stubSubscriptions{}, &stubItems{items: map[string][]domain.Item{}})
+	h.deps.Poll = poll
+	req := httptest.NewRequest(http.MethodPost, "/app/feeds/poll", nil)
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.feedPoll(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if !poll.pollAllHadDeadline {
+		t.Fatalf("manual poll all should run with a deadline to avoid gateway timeouts")
+	}
+}
+
+func TestFeedPollRendersCurrentViewWhenPollFails(t *testing.T) {
+	t.Parallel()
+	poll := &stubPoll{err: errors.New("fetch failed")}
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		"f1": {{ID: "i1", FeedID: "f1", Title: "既存の記事"}},
+	}}
+	h := newAppHandler(t, subs, items)
+	h.deps.Poll = poll
+	req := httptest.NewRequest(http.MethodPost, "/app/feeds/f1/poll?feed=f1", nil)
+	req.SetPathValue("feedID", "f1")
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.feedPoll(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), "既存の記事") {
+		t.Fatalf("poll failure should keep the current item list visible: %q", rec.Body.String())
 	}
 }
 

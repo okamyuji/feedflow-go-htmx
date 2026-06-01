@@ -1,13 +1,18 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 )
+
+// manualPollTimeout HTTPのWriteTimeoutより短く打ち切り、手動更新がゲートウェイタイムアウトを誘発しないようにします。
+const manualPollTimeout = 20 * time.Second
 
 // buildTree 左ペインの購読ツリーを組み立てます。固定の集約ノードに続けてフィードを並べます。
 // すべてノードは未読を読む主ストリームのため未読合計を持たせます。
@@ -244,15 +249,15 @@ func (h *Handler) feedPoll(w http.ResponseWriter, r *http.Request) {
 	if feedID == "" {
 		feedID = r.URL.Query().Get("feed")
 	}
+	pollCtx, cancel := context.WithTimeout(r.Context(), manualPollTimeout)
+	defer cancel()
 	if feedID == "" {
-		if _, err := h.deps.Poll.PollAllNow(r.Context()); err != nil {
-			http.Error(w, "failed to poll feeds", http.StatusBadGateway)
-			return
+		if _, err := h.deps.Poll.PollAllNow(pollCtx); err != nil {
+			slog.Warn("manual poll all failed", "error", err)
 		}
 	} else {
-		if _, err := h.deps.Poll.PollFeed(r.Context(), feedID); err != nil {
-			http.Error(w, "failed to poll feed", http.StatusBadGateway)
-			return
+		if _, err := h.deps.Poll.PollFeed(pollCtx, feedID); err != nil {
+			slog.Warn("manual poll feed failed", "feed_id", feedID, "error", err)
 		}
 	}
 	h.itemList(w, r)

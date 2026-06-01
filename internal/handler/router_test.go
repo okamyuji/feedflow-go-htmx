@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
@@ -98,6 +99,23 @@ func TestRouterAppRendersWhenAuthenticated(t *testing.T) {
 	}
 	if rec.Header().Get("Content-Type") == "" {
 		t.Fatalf("Content-Type missing")
+	}
+}
+
+func TestRouterAppDisablesHTMXScriptExecution(t *testing.T) {
+	t.Parallel()
+	h := newFullHandler(t, true)
+	srv := h.Routes()
+	req := httptest.NewRequest(http.MethodGet, "/app", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), `"allowScriptTags":false`) {
+		t.Fatalf("htmx config should disable swapped script execution: %q", rec.Body.String())
 	}
 }
 

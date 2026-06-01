@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.ico">
   <meta name="csrf-token" content="{{ .CSRFToken }}">
   <!-- htmxの履歴キャッシュを無効化しますlocalStorageへのスナップショット保存失敗(historyCacheError)を防ぎます。戻る操作はサーバーから再取得します -->
-  <meta name="htmx-config" content='{"historyCacheSize":0}'>
+  <meta name="htmx-config" content='{"historyCacheSize":0,"allowScriptTags":false}'>
   <link rel="stylesheet" href="/static/styles.css?v={{ staticVersion "styles.css" }}">
   <script src="/static/htmx.min.js?v={{ staticVersion "htmx.min.js" }}" defer></script>
   <script src="/static/app.js?v={{ staticVersion "app.js" }}" defer></script>
