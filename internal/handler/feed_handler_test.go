@@ -139,6 +139,32 @@ func (s *stubMutes) AddFilter(keyword string, scope domain.MuteScope, feedID str
 func (s *stubMutes) DeleteFilter(_ string) error                       { return nil }
 func (s *stubMutes) Filter(items []domain.Item) ([]domain.Item, error) { return items, nil }
 
+type stubPoll struct {
+	polledFeedID string
+	polledAll    bool
+	err          error
+}
+
+func (s *stubPoll) PollFeed(_ context.Context, feedID string) (int, error) {
+	s.polledFeedID = feedID
+	if s.err != nil {
+		return 0, s.err
+	}
+	return 1, nil
+}
+
+func (s *stubPoll) PollAll(_ context.Context) (int, error) {
+	return 0, nil
+}
+
+func (s *stubPoll) PollAllNow(_ context.Context) (int, error) {
+	s.polledAll = true
+	if s.err != nil {
+		return 0, s.err
+	}
+	return 1, nil
+}
+
 func newAppHandler(t *testing.T, subs *stubSubscriptions, items *stubItems) *Handler {
 	t.Helper()
 	return newAppHandlerWithSettings(t, subs, items, nil)
@@ -151,6 +177,7 @@ func newAppHandlerWithSettings(t *testing.T, subs *stubSubscriptions, items *stu
 		Items:             items,
 		Bookmarks:         &stubBookmarks{},
 		Mutes:             &stubMutes{},
+		Poll:              &stubPoll{},
 		Sessions:          &stubSessions{username: "owner", ok: true},
 		CSRF:              &stubCSRF{ok: true, token: "tok"},
 		SessionCookieName: "feedflow_session",
@@ -255,6 +282,108 @@ func TestTreeRendersUnsubscribeButtonForFeeds(t *testing.T) {
 	}
 	if !strings.Contains(body, "tree-unsubscribe") {
 		t.Fatalf("feed node should render the unsubscribe button: %q", body)
+	}
+}
+
+func TestTreeRendersPollButtonForFeeds(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	h := newAppHandler(t, subs, &stubItems{items: map[string][]domain.Item{}})
+	req := httptest.NewRequest(http.MethodDelete, "/app/feeds/missing", nil)
+	req.SetPathValue("feedID", "missing")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.feedUnsubscribe(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `hx-post="/app/feeds/f1/poll?feed=f1"`) {
+		t.Fatalf("feed node should expose a manual poll control: %q", body)
+	}
+	if !strings.Contains(body, `hx-push-url="/app/items?feed=f1"`) {
+		t.Fatalf("feed poll should move the browser URL to the refreshed feed: %q", body)
+	}
+	if !strings.Contains(body, "tree-refresh") {
+		t.Fatalf("feed node should render the manual poll button: %q", body)
+	}
+}
+
+func TestFeedPollRefreshesSelectedFeed(t *testing.T) {
+	t.Parallel()
+	poll := &stubPoll{}
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		"f1": {{ID: "i1", FeedID: "f1", Title: "更新後の記事"}},
+	}}
+	h := newAppHandler(t, subs, items)
+	h.deps.Poll = poll
+	req := httptest.NewRequest(http.MethodPost, "/app/feeds/f1/poll?feed=f1", nil)
+	req.SetPathValue("feedID", "f1")
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.feedPoll(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if poll.polledFeedID != "f1" {
+		t.Fatalf("polled feed got %q want %q", poll.polledFeedID, "f1")
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="item-list"`) || !strings.Contains(body, "更新後の記事") {
+		t.Fatalf("poll should render the refreshed feed item list: %q", body)
+	}
+	if !strings.Contains(body, `id="tree-pane"`) || !strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Fatalf("poll should include a tree pane out-of-band refresh: %q", body)
+	}
+}
+
+func TestItemListRendersManualPollButtonForCurrentView(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	h := newAppHandler(t, subs, &stubItems{items: map[string][]domain.Item{}})
+	req := httptest.NewRequest(http.MethodGet, "/app/items?feed=f1", nil)
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemList(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `hx-post="/app/feeds/poll?feed=f1"`) {
+		t.Fatalf("item list should render a manual poll button for the current feed: %q", body)
+	}
+	if !strings.Contains(body, "最新記事を取得") {
+		t.Fatalf("manual poll button label should be visible: %q", body)
+	}
+}
+
+func TestFeedPollAllRefreshesCurrentView(t *testing.T) {
+	t.Parallel()
+	poll := &stubPoll{}
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		"f1": {{ID: "i1", FeedID: "f1", Title: "全体更新後の記事"}},
+	}}
+	h := newAppHandler(t, subs, items)
+	h.deps.Poll = poll
+	req := httptest.NewRequest(http.MethodPost, "/app/feeds/poll", nil)
+	req.Header.Set("HX-Request", "true")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.feedPoll(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if !poll.polledAll {
+		t.Fatalf("manual poll without a feed should poll all feeds")
+	}
+	if !strings.Contains(rec.Body.String(), "全体更新後の記事") {
+		t.Fatalf("poll should render the current item list: %q", rec.Body.String())
 	}
 }
 

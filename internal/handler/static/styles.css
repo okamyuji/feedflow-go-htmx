@@ -150,8 +150,9 @@ body {
   transition: background var(--duration) var(--ease);
 }
 
-/* 購読解除(tree-unsubscribe)とラベル削除(tree-label-delete)は見た目を共有しますが、
+/* 手動更新(tree-refresh)、購読解除(tree-unsubscribe)、ラベル削除(tree-label-delete)は見た目を共有しますが、
    一括解除処理がフィードの解除ボタンだけを掴めるようにセレクタは分離しています。 */
+.tree-refresh,
 .tree-unsubscribe,
 .tree-label-delete {
   flex: 0 0 auto;
@@ -170,6 +171,8 @@ body {
   transition: opacity var(--duration) var(--ease), color var(--duration) var(--ease), background var(--duration) var(--ease);
 }
 
+.tree-item:hover .tree-refresh,
+.tree-refresh:focus-visible,
 .tree-item:hover .tree-unsubscribe,
 .tree-unsubscribe:focus-visible,
 .tree-item:hover .tree-label-delete,
@@ -177,6 +180,8 @@ body {
   opacity: 1;
 }
 
+.tree-refresh:hover,
+.tree-refresh:focus-visible,
 .tree-unsubscribe:hover,
 .tree-unsubscribe:focus-visible,
 .tree-label-delete:hover,

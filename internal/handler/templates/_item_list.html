@@ -3,6 +3,10 @@
   <div class="item-list-bar">
     {{ if .CurrentLabel }}<h2 class="item-list-title">{{ .CurrentLabel }}</h2>{{ end }}
     <div class="item-list-actions">
+    <form class="inline-form" hx-post="{{ .ManualPollURL }}" hx-target="#main-pane" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+      <button class="btn-ghost" type="submit">最新記事を取得</button>
+    </form>
     {{ if eq .BulkRead "feed" }}
     <div class="markread">
       <form class="inline-form" hx-post="/app/items/markall?feed={{ .CurrentFeedID }}" hx-target="#main-pane">

@@ -238,6 +238,26 @@ func (h *Handler) feedSubscribe(w http.ResponseWriter, r *http.Request) {
 	h.itemList(w, r)
 }
 
+// feedPoll 指定フィードを手動で即時取得し、記事一覧を部分更新で返します。
+func (h *Handler) feedPoll(w http.ResponseWriter, r *http.Request) {
+	feedID := r.PathValue("feedID")
+	if feedID == "" {
+		feedID = r.URL.Query().Get("feed")
+	}
+	if feedID == "" {
+		if _, err := h.deps.Poll.PollAllNow(r.Context()); err != nil {
+			http.Error(w, "failed to poll feeds", http.StatusBadGateway)
+			return
+		}
+	} else {
+		if _, err := h.deps.Poll.PollFeed(r.Context(), feedID); err != nil {
+			http.Error(w, "failed to poll feed", http.StatusBadGateway)
+			return
+		}
+	}
+	h.itemList(w, r)
+}
+
 // feedUnsubscribe 指定フィードの購読を解除し、属する記事も削除したうえでツリーペイン全体を部分更新で返します。
 func (h *Handler) feedUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	feedID := r.PathValue("feedID")

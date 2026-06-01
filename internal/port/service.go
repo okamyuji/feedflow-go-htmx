@@ -103,4 +103,6 @@ type PollService interface {
 	PollFeed(ctx context.Context, feedID string) (int, error)
 	// PollAll 期限の来た全フィードを取得して反映し、処理したフィード数を返します。
 	PollAll(ctx context.Context) (int, error)
+	// PollAllNow 期限判定に関係なく全フィードを取得して反映し、処理したフィード数を返します。
+	PollAllNow(ctx context.Context) (int, error)
 }

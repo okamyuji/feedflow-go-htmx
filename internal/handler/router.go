@@ -78,6 +78,7 @@ func (h *Handler) appPage(w http.ResponseWriter, r *http.Request) {
 		CurrentFeedID:    feedID,
 		CurrentFeedTitle: feedTitle,
 		CurrentLabel:     h.currentSelectionLabel(r),
+		ManualPollURL:    manualPollURL(r),
 	}
 	if data.Theme == domain.Theme("") {
 		data.Theme = domain.ThemeDark
@@ -110,6 +111,8 @@ func (h *Handler) Routes() http.Handler {
 
 	// 認証とCSRFが必要な状態変更系ルートです。
 	mux.Handle("POST /app/feeds", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedSubscribe))))
+	mux.Handle("POST /app/feeds/poll", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedPoll))))
+	mux.Handle("POST /app/feeds/{feedID}/poll", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedPoll))))
 	mux.Handle("DELETE /app/feeds/{feedID}", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedUnsubscribe))))
 	mux.Handle("POST /app/items/markall", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemMarkAll))))
 	mux.Handle("POST /app/items/{feedID}/{itemID}/read", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemMarkRead))))

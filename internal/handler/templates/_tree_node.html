@@ -105,6 +105,17 @@
   </a>
   {{ if eq .Kind "feed" }}
   <button
+    class="tree-refresh"
+    type="button"
+    aria-label="最新記事を取得"
+    title="最新記事を取得"
+    hx-post="/app/feeds/{{ .ID }}/poll?feed={{ .ID }}"
+    hx-target="#main-pane"
+    hx-swap="innerHTML"
+    hx-push-url="/app/items?feed={{ .ID }}"
+    hx-sync="closest .tree-item:drop"
+  >↻</button>
+  <button
     class="tree-unsubscribe"
     type="button"
     aria-label="購読を解除"

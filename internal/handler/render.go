@@ -51,6 +51,7 @@ type pageData struct {
 	CurrentFeedID    string              // 表示中フィードのIDです。BulkReadがfeedのときに使います
 	CurrentFeedTitle string              // 表示中フィードの名称です。一括既読ボタンのラベルに使います
 	CurrentLabel     string              // 右ペイン左上に出す、選択中の項目名です。すべて、既読、ブックマーク、あとで読む、フィード名のいずれかです
+	ManualPollURL    string              // 現在の表示条件を保ったまま手動取得するHTMX送信先です
 }
 
 // feedTreeNode 左ペインの購読ツリーの1ノードを表します。

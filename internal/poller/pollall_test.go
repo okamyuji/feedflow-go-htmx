@@ -59,6 +59,41 @@ func TestServicePollAllSelectsDueFeeds(t *testing.T) {
 	}
 }
 
+func TestServicePollAllNowIgnoresDueSettings(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
+	repo := newFakeRepo()
+	_ = repo.SaveSettings(domain.Settings{
+		PollInterval:      domain.PollManualOnly,
+		MaxItems:          200,
+		ReadRetentionDays: 30,
+		Theme:             domain.ThemeDark,
+		DefaultView:       domain.ViewCard,
+	})
+	_ = repo.SaveFeed(domain.Feed{ID: "manual", FeedURL: "https://manual.example/feed", PollInterval: domain.PollManualOnly, LastFetchedAt: now})
+	_ = repo.SaveFeed(domain.Feed{ID: "fresh", FeedURL: "https://fresh.example/feed", PollInterval: domain.Poll30Min, LastFetchedAt: now})
+
+	fetcher := newFakeFetcher()
+	fetcher.results["https://manual.example/feed"] = port.FetchResult{StatusCode: 200, Body: []byte("<rss></rss>")}
+	fetcher.results["https://fresh.example/feed"] = port.FetchResult{StatusCode: 200, Body: []byte("<rss></rss>")}
+	parser := fakeParser{parsed: port.ParsedFeed{}}
+	svc := NewService(repo, fetcher, parser, newFakeClock(now), &fakeIDGen{}, passthroughMute{})
+
+	processed, err := svc.PollAllNow(context.Background())
+	if err != nil {
+		t.Fatalf("PollAllNow returned error: %v", err)
+	}
+	if processed != 2 {
+		t.Fatalf("processed got %d want 2", processed)
+	}
+	if fetcher.calls("https://manual.example/feed") != 1 {
+		t.Fatalf("manual feed must be fetched on explicit poll, got %d", fetcher.calls("https://manual.example/feed"))
+	}
+	if fetcher.calls("https://fresh.example/feed") != 1 {
+		t.Fatalf("fresh feed must be fetched on explicit poll, got %d", fetcher.calls("https://fresh.example/feed"))
+	}
+}
+
 func TestServicePollAllContinuesOnError(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)

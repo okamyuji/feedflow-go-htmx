@@ -263,12 +263,19 @@ func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 		CurrentFeedID:    feedID,
 		CurrentFeedTitle: feedTitle,
 		CurrentLabel:     h.currentSelectionLabel(r),
+		ManualPollURL:    manualPollURL(r),
 	}
 	if isHTMX(r) {
 		h.renderWithTreeOOB(w, r, http.StatusOK, "_item_list.html", data)
 		return
 	}
 	h.renderShellPage(w, r, sess, "feedflow", data)
+}
+
+// manualPollURL 現在の表示条件を保ったまま手動取得するPOST先を返します。
+func manualPollURL(r *http.Request) string {
+	u := url.URL{Path: "/app/feeds/poll", RawQuery: r.URL.RawQuery}
+	return u.String()
 }
 
 // bulkReadContext 一括既読コントロールの表示範囲をリクエストのクエリから決めます。

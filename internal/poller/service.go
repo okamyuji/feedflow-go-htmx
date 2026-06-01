@@ -107,6 +107,27 @@ func (s *Service) PollAll(ctx context.Context) (int, error) {
 	return processed, nil
 }
 
+// PollAllNow 期限判定に関係なく全フィードを取得して反映し、処理したフィード数を返します。
+// 個々のフィードの取得失敗は処理を止めず、処理を試みたフィード数を数えます。
+func (s *Service) PollAllNow(ctx context.Context) (int, error) {
+	feeds, err := s.repo.Feeds()
+	if err != nil {
+		return 0, fmt.Errorf("failed to load feeds: %w", err)
+	}
+
+	processed := 0
+	for _, feed := range feeds {
+		if err := ctx.Err(); err != nil {
+			return processed, err
+		}
+		processed++
+		if _, err := s.PollFeed(ctx, feed.ID); err != nil {
+			continue
+		}
+	}
+	return processed, nil
+}
+
 // applyParsed パース結果を既存記事と突き合わせ新着を反映してフィードを更新します。
 // 既存のGUID集合に無い記事だけを新着としてdomain.Itemへ写し、ID付与とFeedID紐付けを行います。
 // 新着にミュートを適用してから既存記事の前に積んで保存します。
