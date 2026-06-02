@@ -17,17 +17,27 @@ func pollFeedsConcurrently(ctx context.Context, ids []string, limit int, pollOne
 	var wg sync.WaitGroup
 	var processed atomic.Int64
 	for _, id := range ids {
+		// 事前にキャンセル済みなら新規取得を始めない(決定的な早期打ち切り)。
 		if err := ctx.Err(); err != nil {
 			break
 		}
-		processed.Add(1)
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(feedID string) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			pollOne(ctx, feedID)
-		}(id)
+		// ワーカー枠の確保待ち中もキャンセルを尊重する。全枠が埋まっている間に
+		// キャンセルされたら新規取得を始めず、開始済みの完了だけを待つ。
+		// 枠を確保できたフィードだけをprocessedに数える。
+		select {
+		case <-ctx.Done():
+			// 確保待ち中にキャンセルされた。
+		case sem <- struct{}{}:
+			processed.Add(1)
+			wg.Add(1)
+			go func(feedID string) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				pollOne(ctx, feedID)
+			}(id)
+			continue
+		}
+		break
 	}
 	wg.Wait()
 	return int(processed.Load())
