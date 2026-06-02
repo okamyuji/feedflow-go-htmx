@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # quality-gate.sh
 # pre-commitとCIから同一コマンドで呼び出す品質ゲート一式。
-# gofmt / go vet / staticcheck / golangci-lint / govulncheck / go test(cover) / build / gitleaks。
+# gofmt / go fix / go vet / staticcheck / golangci-lint / govulncheck / go test(cover) / build / gitleaks。
 # E2EはPlaywrightをCIの別ジョブで実行するためここには含めない。
 set -euo pipefail
 
 echo "==> gofmt"
 ./scripts/hooks/check_gofmt.sh
+
+echo "==> go fix -diff (近代化の適用漏れ検査)"
+# -diffは書き換えず差分のみ出力し、差分が非空なら非ゼロ終了する(gofmt -lと同じ非破壊方式)。
+# set -e下では非ゼロ終了でその場で死ぬため、|| trueで受けて差分を捕捉し、自前のメッセージで失敗させる。
+fix_diff="$(go fix -diff ./... || true)"
+if [[ -n "$fix_diff" ]]; then
+  echo "ERROR: go fix で近代化できる箇所が残っています。'go fix ./...' を実行してコミットしてください。" >&2
+  echo "$fix_diff" >&2
+  exit 2
+fi
 
 echo "==> go vet"
 go vet ./...

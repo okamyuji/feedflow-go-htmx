@@ -55,9 +55,6 @@ func dueForPollWithJitter(feed domain.Feed, settings domain.Settings, now time.T
 	if feed.LastFetchedAt.IsZero() {
 		return true
 	}
-	threshold := interval - jitter(interval)
-	if threshold < 0 {
-		threshold = 0
-	}
+	threshold := max(interval-jitter(interval), 0)
 	return now.Sub(feed.LastFetchedAt) >= threshold
 }

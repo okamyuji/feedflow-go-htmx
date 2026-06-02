@@ -122,6 +122,52 @@ func TestServicePollAllContinuesOnError(t *testing.T) {
 	}
 }
 
+// TestServicePollAllNowFetchesInParallel 全件取得が直列ではなく並列で走ることを、
+// 遅延を注入したフィード群の合計取得時間が直列換算より十分短いことで確認します。
+func TestServicePollAllNowFetchesInParallel(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
+	repo := newFakeRepo()
+	_ = repo.SaveSettings(domain.DefaultSettings())
+
+	fetcher := newFakeFetcher()
+	const feedCount = 8
+	const perFeedDelay = 30 * time.Millisecond
+	for i := range feedCount {
+		id := "f" + string(rune('a'+i))
+		url := "https://" + id + ".example/feed"
+		_ = repo.SaveFeed(domain.Feed{ID: id, FeedURL: url, PollInterval: domain.Poll15Min})
+		fetcher.delays[url] = perFeedDelay
+		fetcher.results[url] = port.FetchResult{StatusCode: 200, Body: []byte("<rss></rss>")}
+	}
+
+	svc := NewService(repo, fetcher, fakeParser{}, newFakeClock(now), &fakeIDGen{}, passthroughMute{})
+	svc.jitter = func(time.Duration) time.Duration { return 0 }
+
+	start := time.Now()
+	processed, err := svc.PollAllNow(context.Background())
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("PollAllNow returned error: %v", err)
+	}
+	if processed != feedCount {
+		t.Fatalf("processed got %d want %d", processed, feedCount)
+	}
+	// 並列度はfeedCountと同じdefaultPollAllConcurrency(=8)なので理論上は約perFeedDelayで完了する。
+	// 直列ならfeedCount*perFeedDelay(=240ms)かかる。余裕を見て半分未満を並列の証跡とする。
+	serial := feedCount * perFeedDelay
+	if elapsed >= serial/2 {
+		t.Fatalf("elapsed %v not parallel enough (serial would be %v)", elapsed, serial)
+	}
+	for i := range feedCount {
+		url := "https://" + "f" + string(rune('a'+i)) + ".example/feed"
+		if fetcher.calls(url) != 1 {
+			t.Fatalf("feed %s fetched %d times want 1", url, fetcher.calls(url))
+		}
+	}
+}
+
 func TestServicePollAllCanceledContext(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)

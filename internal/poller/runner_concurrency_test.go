@@ -22,7 +22,7 @@ func TestRunnerPollDueRespectsConcurrencyLimit(t *testing.T) {
 		DefaultView:       domain.ViewCard,
 	})
 	const feedCount = 10
-	for i := 0; i < feedCount; i++ {
+	for i := range feedCount {
 		id := "f" + string(rune('a'+i))
 		_ = repo.SaveFeed(domain.Feed{ID: id, FeedURL: "https://" + id + ".example/feed", PollInterval: domain.Poll15Min})
 	}

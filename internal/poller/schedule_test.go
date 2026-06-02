@@ -89,7 +89,7 @@ func TestRatioJitterBounds(t *testing.T) {
 	t.Parallel()
 	j := ratioJitter(0.1)
 	interval := 30 * time.Minute
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		got := j(interval)
 		if got < 0 || got > interval/10 {
 			t.Fatalf("ratioJitter out of bounds: got %v want in [0, %v]", got, interval/10)

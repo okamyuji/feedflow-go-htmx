@@ -79,7 +79,9 @@ func (s *Service) PollFeed(ctx context.Context, feedID string) (int, error) {
 
 // PollAll 期限の来た全フィードを取得して反映し、処理したフィード数を返します。
 // 期限判定は最終取得時刻と間隔から行い、手動のみのフィードは対象外とします。
+// 期限判定後の取得はdefaultPollAllConcurrencyを上限に並列化します。
 // 個々のフィードの取得失敗は処理を止めず、処理を試みたフィード数を数えます。
+// contextがキャンセルされたら新規の取得を開始せず、開始済みの取得の完了を待ってからキャンセル理由を返します。
 func (s *Service) PollAll(ctx context.Context) (int, error) {
 	feeds, err := s.repo.Feeds()
 	if err != nil {
@@ -91,41 +93,40 @@ func (s *Service) PollAll(ctx context.Context) (int, error) {
 	}
 
 	now := s.clock.Now()
-	processed := 0
+	ids := make([]string, 0, len(feeds))
 	for _, feed := range feeds {
-		if err := ctx.Err(); err != nil {
-			return processed, err
-		}
-		if !dueForPollWithJitter(feed, settings, now, s.jitter) {
-			continue
-		}
-		processed++
-		if _, err := s.PollFeed(ctx, feed.ID); err != nil {
-			continue
+		if dueForPollWithJitter(feed, settings, now, s.jitter) {
+			ids = append(ids, feed.ID)
 		}
 	}
-	return processed, nil
+
+	processed := pollFeedsConcurrently(ctx, ids, defaultPollAllConcurrency, s.pollFeedIgnoringResult)
+	return processed, ctx.Err()
 }
 
 // PollAllNow 期限判定に関係なく全フィードを取得して反映し、処理したフィード数を返します。
+// 取得はdefaultPollAllConcurrencyを上限に並列化します。
 // 個々のフィードの取得失敗は処理を止めず、処理を試みたフィード数を数えます。
+// contextがキャンセルされたら新規の取得を開始せず、開始済みの取得の完了を待ってからキャンセル理由を返します。
 func (s *Service) PollAllNow(ctx context.Context) (int, error) {
 	feeds, err := s.repo.Feeds()
 	if err != nil {
 		return 0, fmt.Errorf("failed to load feeds: %w", err)
 	}
 
-	processed := 0
+	ids := make([]string, 0, len(feeds))
 	for _, feed := range feeds {
-		if err := ctx.Err(); err != nil {
-			return processed, err
-		}
-		processed++
-		if _, err := s.PollFeed(ctx, feed.ID); err != nil {
-			continue
-		}
+		ids = append(ids, feed.ID)
 	}
-	return processed, nil
+
+	processed := pollFeedsConcurrently(ctx, ids, defaultPollAllConcurrency, s.pollFeedIgnoringResult)
+	return processed, ctx.Err()
+}
+
+// pollFeedIgnoringResult 1フィードを取得し、新着件数とエラーを破棄します。
+// 全件取得の並列ヘルパに渡すアダプタで、個々の失敗は全体を止めません。
+func (s *Service) pollFeedIgnoringResult(ctx context.Context, feedID string) {
+	_, _ = s.PollFeed(ctx, feedID)
 }
 
 // applyParsed パース結果を既存記事と突き合わせ新着を反映してフィードを更新します。

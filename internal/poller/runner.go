@@ -3,7 +3,6 @@ package poller
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/port"
@@ -70,24 +69,7 @@ func (r *Runner) pollDue(ctx context.Context) int {
 		return 0
 	}
 
-	sem := make(chan struct{}, r.cfg.MaxConcurrent)
-	var wg sync.WaitGroup
-	processed := 0
-	for _, id := range ids {
-		if err := ctx.Err(); err != nil {
-			break
-		}
-		processed++
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(feedID string) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			r.pollOne(ctx, feedID)
-		}(id)
-	}
-	wg.Wait()
-	return processed
+	return pollFeedsConcurrently(ctx, ids, r.cfg.MaxConcurrent, r.pollOne)
 }
 
 // Run contextがキャンセルされるまで設定間隔ごとに期限フィードを取得し続けます。

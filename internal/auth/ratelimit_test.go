@@ -15,7 +15,7 @@ func TestRateLimiterAllowsUpToBurst(t *testing.T) {
 		RefillEvery: time.Minute / 5,
 	})
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if !rl.Allow("1.2.3.4") {
 			t.Fatalf("Allow attempt %d got false want true within burst", i+1)
 		}
@@ -88,7 +88,7 @@ func TestRateLimiterCapsAtBurst(t *testing.T) {
 	}
 	clk.now = clk.now.Add(time.Hour)
 	allowed := 0
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		if rl.Allow("ip") {
 			allowed++
 		}
