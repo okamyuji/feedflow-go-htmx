@@ -3,9 +3,9 @@
   <div class="item-list-bar">
     {{ if .CurrentLabel }}<h2 class="item-list-title">{{ .CurrentLabel }}</h2>{{ end }}
     <div class="item-list-actions">
-    <form class="inline-form" hx-post="{{ .ManualPollURL }}" hx-target="#main-pane" hx-swap="innerHTML">
+    <form class="inline-form" hx-post="{{ .ManualPollURL }}" hx-target="#main-pane" hx-swap="innerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
-      <button class="btn-ghost" type="submit">最新記事を取得</button>
+      <button class="btn-ghost" type="submit"><span class="poll-spinner" aria-hidden="true"></span>最新記事を取得</button>
     </form>
     {{ if eq .BulkRead "feed" }}
     <div class="markread">

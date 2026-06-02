@@ -38,10 +38,12 @@ func (g *fakeIDGen) NewID() string {
 }
 
 // fakeFetcher URLごとの固定結果を返し、呼び出し回数を記録するFetcherのフェイクです。
+// delaysにURLごとの遅延を設定すると、並列取得の検証のためにその時間だけ待ってから応答します。
 type fakeFetcher struct {
 	mu        sync.Mutex
 	results   map[string]port.FetchResult
 	errs      map[string]error
+	delays    map[string]time.Duration
 	callCount map[string]int
 }
 
@@ -49,6 +51,7 @@ func newFakeFetcher() *fakeFetcher {
 	return &fakeFetcher{
 		results:   map[string]port.FetchResult{},
 		errs:      map[string]error{},
+		delays:    map[string]time.Duration{},
 		callCount: map[string]int{},
 	}
 }
@@ -57,13 +60,25 @@ func (f *fakeFetcher) Fetch(ctx context.Context, req port.FetchRequest) (port.Fe
 	if err := ctx.Err(); err != nil {
 		return port.FetchResult{}, err
 	}
+	// 遅延中に他goroutineの取得をブロックしないよう、mutexは状態読み取りの間だけ保持します。
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.callCount[req.URL]++
-	if err, ok := f.errs[req.URL]; ok {
+	err := f.errs[req.URL]
+	res, ok := f.results[req.URL]
+	delay := f.delays[req.URL]
+	f.mu.Unlock()
+
+	if delay > 0 {
+		select {
+		case <-ctx.Done():
+			return port.FetchResult{}, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+
+	if err != nil {
 		return port.FetchResult{}, err
 	}
-	res, ok := f.results[req.URL]
 	if !ok {
 		return port.FetchResult{StatusCode: 200}, nil
 	}

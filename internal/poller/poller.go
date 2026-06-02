@@ -18,6 +18,9 @@ const (
 	defaultTickInterval = time.Minute
 	// defaultMaxConcurrent 同時に取得するフィード数の既定の上限です。
 	defaultMaxConcurrent = 4
+	// defaultPollAllConcurrency 手動の全件取得(PollAllNow/PollAll)で同時に取得するフィード数の上限です。
+	// 背景巡回のdefaultMaxConcurrentより高めにし、手動の即時性を優先します。
+	defaultPollAllConcurrency = 8
 	// defaultJitterRatio 巡回判定に乗せるジッタの割合です。間隔の最大10パーセントを散らします。
 	defaultJitterRatio = 0.1
 )

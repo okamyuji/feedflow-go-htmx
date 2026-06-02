@@ -309,6 +309,9 @@ func TestTreeRendersPollButtonForFeeds(t *testing.T) {
 	if !strings.Contains(body, "tree-refresh") {
 		t.Fatalf("feed node should render the manual poll button: %q", body)
 	}
+	if !strings.Contains(body, `hx-disabled-elt="this"`) {
+		t.Fatalf("feed poll button should disable itself while loading: %q", body)
+	}
 }
 
 func TestFeedPollRefreshesSelectedFeed(t *testing.T) {
@@ -360,6 +363,12 @@ func TestItemListRendersManualPollButtonForCurrentView(t *testing.T) {
 	}
 	if !strings.Contains(body, "最新記事を取得") {
 		t.Fatalf("manual poll button label should be visible: %q", body)
+	}
+	if !strings.Contains(body, `hx-disabled-elt="find button"`) {
+		t.Fatalf("manual poll form should disable its button while loading: %q", body)
+	}
+	if !strings.Contains(body, `class="poll-spinner"`) {
+		t.Fatalf("manual poll button should include a loading spinner: %q", body)
 	}
 }
 
