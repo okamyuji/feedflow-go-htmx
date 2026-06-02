@@ -7,6 +7,7 @@ coverage.html
 
 # 実行時データ(JSON永続化、証明書)
 /data/
+/.verify-data/
 *.pem
 *.key
 *.crt
