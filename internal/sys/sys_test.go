@@ -31,7 +31,7 @@ func TestRandomIDGen_NewID_Unique(t *testing.T) {
 	g := NewRandomIDGen()
 	const n = 1000
 	seen := make(map[string]struct{}, n)
-	for i := 0; i < n; i++ {
+	for range n {
 		id := g.NewID()
 		if _, dup := seen[id]; dup {
 			t.Fatalf("NewID() が重複を返しました id=%s", id)

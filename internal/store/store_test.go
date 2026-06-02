@@ -654,10 +654,10 @@ func TestConcurrentSaveAndRead(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(workers * 2)
 
-	for w := 0; w < workers; w++ {
+	for w := range workers {
 		go func(w int) {
 			defer wg.Done()
-			for i := 0; i < perWorker; i++ {
+			for i := range perWorker {
 				id := fmt.Sprintf("f-%d-%d", w, i)
 				if err := s.SaveFeed(domain.Feed{ID: id, Title: id}); err != nil {
 					t.Errorf("SaveFeed returned error: %v", err)
@@ -667,7 +667,7 @@ func TestConcurrentSaveAndRead(t *testing.T) {
 		}(w)
 		go func() {
 			defer wg.Done()
-			for i := 0; i < perWorker; i++ {
+			for range perWorker {
 				if _, err := s.Feeds(); err != nil {
 					t.Errorf("Feeds returned error: %v", err)
 					return

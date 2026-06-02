@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // ErrorThreshold この回数以上連続でエラーが続いたフィードをエラー状態とみなします。
 const ErrorThreshold = 5
@@ -27,10 +30,5 @@ func (f Feed) HasError() bool {
 
 // InCategory 指定したカテゴリIDに所属するかどうかを返します。
 func (f Feed) InCategory(categoryID string) bool {
-	for _, id := range f.CategoryIDs {
-		if id == categoryID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(f.CategoryIDs, categoryID)
 }

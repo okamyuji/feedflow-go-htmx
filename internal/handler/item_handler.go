@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 
@@ -181,12 +182,7 @@ func keepItems(items []domain.Item, keep func(domain.Item) bool) []domain.Item {
 
 // containsString 文字列スライスに対象値が含まれるかどうかを返します。
 func containsString(values []string, target string) bool {
-	for _, v := range values {
-		if v == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, target)
 }
 
 // feedIDsInCategory 指定カテゴリに所属するフィードのID群を返します。
@@ -213,7 +209,7 @@ func cleanArticleHTML(raw string) template.HTML {
 		text = raw
 	}
 	var sb strings.Builder
-	for _, para := range strings.Split(text, "\n\n") {
+	for para := range strings.SplitSeq(text, "\n\n") {
 		para = strings.TrimSpace(para)
 		if para == "" {
 			continue
