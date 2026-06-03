@@ -63,7 +63,17 @@ func (s *stubItems) ListItems(feedID string) ([]domain.Item, error) {
 	}
 	return s.items[feedID], nil
 }
-func (s *stubItems) MarkRead(_, _ string, _ bool) error         { return nil }
+func (s *stubItems) MarkRead(feedID, itemID string, read bool) error {
+	items := s.items[feedID]
+	for i, it := range items {
+		if it.ID == itemID {
+			items[i].Read = read
+			s.items[feedID] = items
+			return nil
+		}
+	}
+	return nil
+}
 func (s *stubItems) MarkAllRead(_ string) error                 { return nil }
 func (s *stubItems) ReadLater(_, _ string, _ bool) error        { return nil }
 func (s *stubItems) SetTags(_, _ string, _ []string) error      { return nil }

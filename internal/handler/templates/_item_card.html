@@ -5,6 +5,7 @@
   id="item-{{ .ID }}"
   data-feed="{{ .FeedID }}"
   data-item="{{ .ID }}"
+  {{ if .CardOOB }}hx-swap-oob="outerHTML"{{ end }}
   x-data="{ bmOpen: false }"
 >
   <a

@@ -45,12 +45,15 @@ function registerFeedflow() {
     isMobile: false,
     autoRead: true,
     markedRead: null,
+    readQueue: null,
+    processingReadQueue: false,
     feedFilter: "",
     markMenuOpen: false,
     treeScrollTop: 0,
 
     init() {
       this.markedRead = new Set();
+      this.readQueue = [];
       const saved = localStorage.getItem("feedflow-theme");
       const initial = document.documentElement.getAttribute("data-theme");
       if (saved === "dark" || saved === "light") {
@@ -214,13 +217,10 @@ function registerFeedflow() {
     },
 
     openOverlay(event) {
-      const { feedID, itemID, card } = cardActionData(event.currentTarget);
+      const { feedID, itemID } = cardActionData(event.currentTarget);
       this.activeFeed = feedID;
       this.activeItem = itemID;
       this.overlayOpen = true;
-      if (card) {
-        card.classList.add("is-read");
-      }
     },
 
     closeOverlay() {
@@ -243,9 +243,44 @@ function registerFeedflow() {
       }
     },
 
+    // enqueueRead 上端を越えた記事を自動既読キューへ入れます。
+    // markedReadは送信待ち/送信中の重複防止だけに使い、完了後は再試行できるよう必ず外します。
+    enqueueRead(feedID, itemID) {
+      const key = feedID + "/" + itemID;
+      if (this.markedRead.has(key)) {
+        return;
+      }
+      this.markedRead.add(key);
+      this.readQueue.push({ feedID, itemID, key });
+      this.processReadQueue();
+    },
+
+    processReadQueue() {
+      if (this.processingReadQueue) {
+        return;
+      }
+      const next = this.readQueue.shift();
+      if (!next) {
+        return;
+      }
+      this.processingReadQueue = true;
+      const itemSelector =
+        "#item-" + (window.CSS && window.CSS.escape ? window.CSS.escape(next.itemID) : next.itemID);
+      Promise.resolve(
+        window.htmx.ajax("POST", "/app/items/" + next.feedID + "/" + next.itemID + "/read", {
+          target: itemSelector,
+          swap: "outerHTML",
+          values: { read: "true" },
+        })
+      ).finally(() => {
+        this.markedRead.delete(next.key);
+        this.processingReadQueue = false;
+        this.processReadQueue();
+      });
+    },
+
     // onListScroll 記事一覧をスクロールしたとき上端より上へ流れた未読カードを既読にします。
-    // 自動既読がオフのときは何もしません。同じ記事を二重送信しないようmarkedReadで記録します。
-    // htmx.ajaxで既読化することでカードの再描画と未読数のout-of-band更新を同時に行います。
+    // 自動既読がオフのときは何もしません。カード再描画と未読数のout-of-band更新はHTMX応答に任せます。
     onListScroll() {
       if (!this.autoRead) {
         return;
@@ -262,18 +297,7 @@ function registerFeedflow() {
         if (!feedID || !itemID) {
           return;
         }
-        const key = feedID + "/" + itemID;
-        if (this.markedRead.has(key)) {
-          return;
-        }
-        this.markedRead.add(key);
-        card.classList.add("is-read");
-        window.htmx.ajax("POST", "/app/items/" + feedID + "/" + itemID + "/read", {
-          source: card,
-          target: "#item-" + itemID,
-          swap: "outerHTML",
-          values: { read: "true" },
-        });
+        this.enqueueRead(feedID, itemID);
       });
     },
 

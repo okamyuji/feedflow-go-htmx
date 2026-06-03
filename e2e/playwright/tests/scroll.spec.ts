@@ -155,4 +155,35 @@ test.describe("スクロール挙動(フィード選択・削除)", () => {
 
     expect(await mainScrollTop(page)).toBeGreaterThan(100);
   });
+
+  test("スクロール自動既読はカードのボタンも未読に戻すへ更新する", async ({ page }) => {
+    await page.click('#tree-pane li.tree-feed[data-label="Long Scroll Feed"] a.tree-link');
+    await expect(page.locator(".item-list li.item-card")).toHaveCount(40);
+
+    await page.locator("#main-pane").evaluate((el) => {
+      el.scrollTop = 500;
+    });
+    await page.waitForTimeout(1200);
+
+    await expect
+      .poll(async () =>
+        page.locator(".item-card").evaluateAll((cards) => {
+          const barBottom = document.querySelector(".app-bar")?.getBoundingClientRect().bottom ?? 0;
+          return cards
+            .filter((card) => card.getBoundingClientRect().bottom <= barBottom)
+            .map((card) => ({
+              title: card.querySelector(".item-title")?.textContent?.trim(),
+              isRead: card.classList.contains("is-read"),
+              hasUnreadButton: Array.from(card.querySelectorAll("button")).some(
+                (button) => button.textContent?.trim() === "未読に戻す",
+              ),
+            }));
+        }),
+      )
+      .toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ isRead: true, hasUnreadButton: true }),
+        ]),
+      );
+  });
 });
