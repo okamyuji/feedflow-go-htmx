@@ -93,4 +93,7 @@ func TestAppJSListAutoReadQueuesWithoutOptimisticReadState(t *testing.T) {
 	if !strings.Contains(js, "finally(() =>") || !strings.Contains(js, "this.markedRead.delete(") {
 		t.Fatalf("queued read requests must clear the in-flight key so failed or unchanged cards can retry")
 	}
+	if !strings.Contains(js, "catch(() =>") {
+		t.Fatalf("queued read requests must handle htmx.ajax rejections before cleanup")
+	}
 }

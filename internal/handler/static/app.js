@@ -272,7 +272,9 @@ function registerFeedflow() {
           swap: "outerHTML",
           values: { read: "true" },
         })
-      ).finally(() => {
+      ).catch(() => {
+        // 失敗時はmarkedRead解放後の再スクロールで再送できるよう握りつぶします。
+      }).finally(() => {
         this.markedRead.delete(next.key);
         this.processingReadQueue = false;
         this.processReadQueue();

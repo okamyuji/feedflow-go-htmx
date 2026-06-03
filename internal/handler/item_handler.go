@@ -342,7 +342,7 @@ func (h *Handler) itemOverlay(w http.ResponseWriter, r *http.Request) {
 	view := toItemView(it)
 	view.Content = cleanArticleHTML(it.Content)
 	if markedRead {
-		h.renderOverlayWithCardOOB(w, r, view, feedID, itemID)
+		h.renderOverlayWithCardOOB(w, r, view)
 		return
 	}
 	h.renderPartial(w, http.StatusOK, "_item_overlay.html", view)
@@ -365,24 +365,17 @@ func (h *Handler) renderCard(w http.ResponseWriter, r *http.Request, feedID, ite
 }
 
 // renderOverlayWithCardOOB オーバーレイ本文を主レスポンスとして返し、既読化後のカードとツリーをOOBで差し替えます。
-func (h *Handler) renderOverlayWithCardOOB(w http.ResponseWriter, r *http.Request, overlay itemView, feedID, itemID string) {
+func (h *Handler) renderOverlayWithCardOOB(w http.ResponseWriter, r *http.Request, overlay itemView) {
 	var buf bytes.Buffer
 	if err := h.templates.ExecuteTemplate(&buf, "_item_overlay.html", overlay); err != nil {
 		slog.Error("failed to execute template", "template", "_item_overlay.html", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	it, ok, err := h.findItem(feedID, itemID)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-	card := toItemView(it)
+	card := overlay
+	card.Read = true
 	card.CardOOB = true
+	card.UnreadStart = false
 	if err := h.templates.ExecuteTemplate(&buf, "_item_card.html", card); err != nil {
 		slog.Error("failed to execute template", "template", "_item_card.html", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
