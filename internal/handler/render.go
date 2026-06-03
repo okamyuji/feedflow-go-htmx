@@ -81,6 +81,7 @@ type itemView struct {
 	ReadLater   bool          // あとで読む済みかどうかです
 	HasContent  bool          // 本文を持つかどうかです。本文の無い外部リンクはオーバーレイを開かず元記事を直接開きます
 	UnreadStart bool          // 単一フィード表示で既読先頭群の直後、未読の開始位置かどうかです。区切り線描画に使います
+	CardOOB     bool          // HTMX out-of-bandでカードを差し替えるかどうかです
 }
 
 // formatJST 時刻をJSTに変換して"2006-01-02 15:04"形式で返します。ゼロ値は空文字を返します。

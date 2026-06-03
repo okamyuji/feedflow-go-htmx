@@ -242,6 +242,49 @@ func TestItemMarkRead(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `hx-swap-oob="true"`) {
 		t.Fatalf("body should include the out-of-band tree swap: %q", rec.Body.String())
 	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `>未読に戻す</button>`) {
+		t.Fatalf("read response should render unread toggle after marking read: %q", body)
+	}
+	if !strings.Contains(body, `hx-vals='{"read": "false"}'`) {
+		t.Fatalf("read response should make the next toggle mark unread: %q", body)
+	}
+}
+
+func TestItemOverlayMarkReadIncludesUpdatedCardOOB(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		"f1": {
+			{
+				ID:      "i1",
+				FeedID:  "f1",
+				Title:   "記事1",
+				Summary: "要約1",
+				Content: "本文1",
+			},
+		},
+	}}
+	h := newAppHandler(t, subs, items)
+	req := httptest.NewRequest(http.MethodGet, "/app/items/f1/i1", nil)
+	req.Header.Set("HX-Request", "true")
+	req.SetPathValue("feedID", "f1")
+	req.SetPathValue("itemID", "i1")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemOverlay(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="reading-article"`) {
+		t.Fatalf("overlay response should still render the reading article: %q", body)
+	}
+	if !strings.Contains(body, `id="item-i1"`) || !strings.Contains(body, `hx-swap-oob="outerHTML"`) {
+		t.Fatalf("overlay read response should include updated card OOB: %q", body)
+	}
+	if !strings.Contains(body, `>未読に戻す</button>`) {
+		t.Fatalf("overlay read response should render unread toggle in updated card: %q", body)
+	}
 }
 
 func TestItemMarkReadUpdatesTreeUnreadOOB(t *testing.T) {

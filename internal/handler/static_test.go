@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -64,5 +66,34 @@ func TestStaticHandlerETagAnd304(t *testing.T) {
 
 	if rec2.Code != http.StatusNotModified {
 		t.Fatalf("If-None-Match一致時のstatus got %d want %d", rec2.Code, http.StatusNotModified)
+	}
+}
+
+func TestAppJSListAutoReadQueuesWithoutOptimisticReadState(t *testing.T) {
+	t.Parallel()
+	data, err := fs.ReadFile(staticFS, "static/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(data)
+
+	start := strings.Index(js, "onListScroll()")
+	end := strings.Index(js, "focusNextCard(delta)")
+	if start == -1 || end == -1 || end <= start {
+		t.Fatalf("app.js should contain onListScroll followed by focusNextCard")
+	}
+	onListScroll := js[start:end]
+
+	if strings.Contains(onListScroll, `card.classList.add("is-read")`) {
+		t.Fatalf("list auto-read must not mark cards read before the server response")
+	}
+	if !strings.Contains(js, "readQueue") || !strings.Contains(js, "processReadQueue") {
+		t.Fatalf("list auto-read should queue read requests instead of firing concurrent htmx.ajax calls")
+	}
+	if !strings.Contains(js, "finally(() =>") || !strings.Contains(js, "this.markedRead.delete(") {
+		t.Fatalf("queued read requests must clear the in-flight key so failed or unchanged cards can retry")
+	}
+	if !strings.Contains(js, "catch(() =>") {
+		t.Fatalf("queued read requests must handle htmx.ajax rejections before cleanup")
 	}
 }

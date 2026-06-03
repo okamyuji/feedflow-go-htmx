@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"bytes"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -340,7 +342,7 @@ func (h *Handler) itemOverlay(w http.ResponseWriter, r *http.Request) {
 	view := toItemView(it)
 	view.Content = cleanArticleHTML(it.Content)
 	if markedRead {
-		h.renderWithTreeOOB(w, r, http.StatusOK, "_item_overlay.html", view)
+		h.renderOverlayWithCardOOB(w, r, view)
 		return
 	}
 	h.renderPartial(w, http.StatusOK, "_item_overlay.html", view)
@@ -360,6 +362,42 @@ func (h *Handler) renderCard(w http.ResponseWriter, r *http.Request, feedID, ite
 	}
 	v := toItemView(it)
 	h.renderWithTreeOOB(w, r, http.StatusOK, "_item_card.html", v)
+}
+
+// renderOverlayWithCardOOB オーバーレイ本文を主レスポンスとして返し、既読化後のカードとツリーをOOBで差し替えます。
+func (h *Handler) renderOverlayWithCardOOB(w http.ResponseWriter, r *http.Request, overlay itemView) {
+	var buf bytes.Buffer
+	if err := h.templates.ExecuteTemplate(&buf, "_item_overlay.html", overlay); err != nil {
+		slog.Error("failed to execute template", "template", "_item_overlay.html", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	card := overlay
+	card.Read = true
+	card.CardOOB = true
+	card.UnreadStart = false
+	if err := h.templates.ExecuteTemplate(&buf, "_item_card.html", card); err != nil {
+		slog.Error("failed to execute template", "template", "_item_card.html", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	tree, err := h.treeData(r)
+	if err != nil {
+		slog.Error("failed to build tree for oob swap", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	tree.TreeOOB = true
+	if err := h.templates.ExecuteTemplate(&buf, "_tree_pane.html", tree); err != nil {
+		slog.Error("failed to execute template", "template", "_tree_pane.html", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if _, err := buf.WriteTo(w); err != nil {
+		slog.Error("failed to write overlay with card oob", "error", err)
+	}
 }
 
 // itemMarkRead 既読状態を設定し、記事カードとツリーの未読数を再描画します。
