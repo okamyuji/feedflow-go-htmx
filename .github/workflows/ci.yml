@@ -16,6 +16,17 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  security:
+    name: gitleaks secret scan
+    uses: okamyuji/reusable-workflows/.github/workflows/security-scan.yml@v1
+
+  go-ci:
+    name: Go CI
+    uses: okamyuji/reusable-workflows/.github/workflows/go-ci.yml@v1
+    with:
+      go-version: "1.26.4"
+      test-command: "go test -race -shuffle=on -count=1 ./..."
+
   pre-commit:
     name: pre-commit (quality-gate + gitleaks)
     runs-on: ubuntu-latest
