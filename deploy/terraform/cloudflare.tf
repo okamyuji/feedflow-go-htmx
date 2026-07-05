@@ -66,7 +66,7 @@ resource "cloudflare_zero_trust_access_application" "app" {
   name                      = "${var.project_name} owner only"
   domain                    = var.hostname
   type                      = "self_hosted"
-  session_duration          = "24h"
+  session_duration          = "720h"
   app_launcher_visible      = false
   auto_redirect_to_identity = false
 }
