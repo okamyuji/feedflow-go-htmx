@@ -83,6 +83,12 @@ resource "aws_instance" "feedflow" {
   tags = {
     Name = "${var.project_name}-ec2"
   }
+
+  # AMIの最新解決による意図しないインスタンス再作成を防ぎます (2026-08-01の障害の再発防止)。
+  # AMIを更新したいときは terraform apply -replace=aws_instance.feedflow を明示的に実行します。
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 # データ永続化用の追加EBSをインスタンスと同じAZに作成します。
