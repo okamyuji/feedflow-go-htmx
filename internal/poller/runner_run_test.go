@@ -24,8 +24,8 @@ func TestRunnerRunStopsOnContextCancel(t *testing.T) {
 	cfg.TickInterval = 5 * time.Millisecond
 	runner := NewRunner(svc, repo, newFakeClock(now), cfg)
 
-	var ticks int32
-	runner.pollOne = func(_ context.Context, _ string) { atomic.AddInt32(&ticks, 1) }
+	var ticks atomic.Int32
+	runner.pollOne = func(_ context.Context, _ string) { ticks.Add(1) }
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -44,7 +44,7 @@ func TestRunnerRunStopsOnContextCancel(t *testing.T) {
 		t.Fatalf("Run did not return within timeout after cancel")
 	}
 
-	if atomic.LoadInt32(&ticks) == 0 {
+	if ticks.Load() == 0 {
 		t.Fatalf("Run must have polled at least once before cancel")
 	}
 }

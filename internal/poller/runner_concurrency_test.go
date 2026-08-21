@@ -34,19 +34,19 @@ func TestRunnerPollDueRespectsConcurrencyLimit(t *testing.T) {
 	cfg.MaxConcurrent = 3
 	runner := NewRunner(svc, repo, newFakeClock(now), cfg)
 
-	var inFlight int32
+	var inFlight atomic.Int32
 	var peak int32
 	var mu sync.Mutex
 	// 取得関数を差し替え、同時実行のピークを観測する
 	runner.pollOne = func(_ context.Context, _ string) {
-		cur := atomic.AddInt32(&inFlight, 1)
+		cur := inFlight.Add(1)
 		mu.Lock()
 		if cur > peak {
 			peak = cur
 		}
 		mu.Unlock()
 		time.Sleep(5 * time.Millisecond)
-		atomic.AddInt32(&inFlight, -1)
+		inFlight.Add(-1)
 	}
 
 	processed := runner.pollDue(context.Background())
