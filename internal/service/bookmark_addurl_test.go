@@ -391,3 +391,52 @@ func TestAddURLPropagatesErrorWhenRereadingUpdatedItem(t *testing.T) {
 		t.Error("AddURL returned nil, want the re-read error")
 	}
 }
+
+// slowFetcher タイトル取得中に別のリクエストが同じURLを保存する状況を再現するフェッチャです。
+type slowFetcher struct {
+	onFetch func()
+	body    string
+}
+
+func (f *slowFetcher) Fetch(_ context.Context, _ port.FetchRequest) (port.FetchResult, error) {
+	if f.onFetch != nil {
+		f.onFetch()
+	}
+	return port.FetchResult{
+		StatusCode:  200,
+		Body:        []byte(f.body),
+		ContentType: "text/html; charset=utf-8",
+	}, nil
+}
+
+func TestAddURLDoesNotDuplicateWhenSavedDuringFetch(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	// タイトル取得の最中に、別のリクエストが同じURLを保存した状況を作ります。
+	fetch := &slowFetcher{body: pageHTML}
+	fetch.onFetch = func() {
+		_ = repo.SaveFeed(domain.Feed{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle})
+		_ = repo.SaveItems(domain.SavedPagesFeedID, []domain.Item{
+			{ID: "other", FeedID: domain.SavedPagesFeedID, Link: "https://example.com/a", Bookmarked: true},
+		})
+	}
+	deps := newDeps(repo, newFakeFetcher(), fakeParser{}, time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC), &fakeIDGen{})
+	deps.Fetch = fetch
+	items := service.NewItemService(deps, service.NewMuteService(deps))
+	svc := service.NewBookmarkService(deps, items)
+
+	it, err := svc.AddURL(context.Background(), "https://example.com/a", "")
+	if err != nil {
+		t.Fatalf("AddURL returned error: %v", err)
+	}
+	if it.ID != "other" {
+		t.Errorf("returned item id = %q, want the item saved during the fetch", it.ID)
+	}
+	saved, err := repo.Items(domain.SavedPagesFeedID)
+	if err != nil {
+		t.Fatalf("Items returned error: %v", err)
+	}
+	if len(saved) != 1 {
+		t.Errorf("item count = %d, want 1 (the url must not be added twice)", len(saved))
+	}
+}

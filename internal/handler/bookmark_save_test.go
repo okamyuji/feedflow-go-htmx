@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
+	"github.com/okamyuji/feedflow-go-htmx/internal/service"
 )
 
 // TestItemBookmarkSaveRendersPicker 保存(bookmarked=true)はピッカーを再描画し、解除ボタン(=保存済み状態)を出します。
@@ -310,5 +312,55 @@ func TestItemBookmarkKeepsSubscribedItemOnUnset(t *testing.T) {
 	}
 	if got := len(items.items["f1"]); got != 1 {
 		t.Fatalf("購読フィードの記事は残るべき 件数=%d", got)
+	}
+}
+
+// TestItemBookmarkTreatsMissingSavedPageAsSuccess 既に消えている保存ページへの解除は成功として扱います。
+// 別タブや再送で二重に届いた解除を、実害の無い競合として黙って受け流します。
+func TestItemBookmarkTreatsMissingSavedPageAsSuccess(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle}}}
+	items := &stubItems{items: map[string][]domain.Item{domain.SavedPagesFeedID: {}}}
+	items.deleteErr = service.ErrItemNotFound
+	h := newAppHandler(t, subs, items)
+	form := url.Values{"bookmarked": {"false"}}
+	req := httptest.NewRequest(http.MethodPost, "/app/items/"+domain.SavedPagesFeedID+"/gone/bookmark", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("feedID", domain.SavedPagesFeedID)
+	req.SetPathValue("itemID", "gone")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemBookmark(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), `hx-swap-oob="delete"`) {
+		t.Fatalf("既に消えている記事でも一覧から取り除くべき: %q", rec.Body.String())
+	}
+}
+
+// TestItemBookmarkReportsDeleteFailure 削除に失敗した場合は内部エラーを返します。
+func TestItemBookmarkReportsDeleteFailure(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		domain.SavedPagesFeedID: {{ID: "s1", FeedID: domain.SavedPagesFeedID, Bookmarked: true}},
+	}}
+	items.deleteErr = errors.New("disk full")
+	h := newAppHandler(t, subs, items)
+	form := url.Values{"bookmarked": {"false"}}
+	req := httptest.NewRequest(http.MethodPost, "/app/items/"+domain.SavedPagesFeedID+"/s1/bookmark", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("feedID", domain.SavedPagesFeedID)
+	req.SetPathValue("itemID", "s1")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemBookmark(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusInternalServerError)
 	}
 }

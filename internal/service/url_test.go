@@ -93,3 +93,53 @@ func TestNormalizeURLIsIdempotent(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeURLPreservesEncodedSlash(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "エンコード済みスラッシュを保持", in: "https://example.com/a%2Fb", want: "https://example.com/a%2Fb"},
+		{name: "末尾除去後もエンコードを保持", in: "https://example.com/a%2Fb/", want: "https://example.com/a%2Fb"},
+		{name: "エンコード済み疑問符を保持", in: "https://example.com/a%3Fb", want: "https://example.com/a%3Fb"},
+		{name: "エンコード済みシャープを保持", in: "https://example.com/a%23b", want: "https://example.com/a%23b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := normalizeURL(tt.in)
+			if err != nil {
+				t.Fatalf("normalizeURL(%q) returned error: %v", tt.in, err)
+			}
+			if got != tt.want {
+				t.Errorf("normalizeURL(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeURLStripsUserinfo(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "ユーザー名とパスワード", in: "https://user:pass@example.com/a", want: "https://example.com/a"},
+		{name: "ユーザー名のみ", in: "https://user@example.com/a", want: "https://example.com/a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := normalizeURL(tt.in)
+			if err != nil {
+				t.Fatalf("normalizeURL(%q) returned error: %v", tt.in, err)
+			}
+			if got != tt.want {
+				t.Errorf("normalizeURL(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}

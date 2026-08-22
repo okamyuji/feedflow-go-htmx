@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import {
   addSavedURL,
+  clearBookmarkLabels,
   clearSavedPages,
+  expandBookmarkTree,
   openBookmarkView,
   setupAndLogin,
   startPageServer,
@@ -14,6 +16,7 @@ test.describe("任意URLのブックマーク追加", () => {
     site = await startPageServer();
     await setupAndLogin(page);
     await clearSavedPages(page);
+    await clearBookmarkLabels(page);
   });
 
   test.afterEach(async () => {
@@ -62,11 +65,14 @@ test.describe("任意URLのブックマーク追加", () => {
     try {
       await openBookmarkView(page);
       await addSavedURL(page, other.url, "資料");
+      await expect(
+        page.locator(".item-list li.item-card .item-title", { hasText: "ラベル付きの保存ページ" }),
+      ).toBeVisible();
       await expect(page.locator(".item-list li.item-card")).toHaveCount(2);
 
       // ラベルで絞り込むと、ラベル指定で追加した1件だけが出ます。
-      await page.locator(".tree-bookmark .tree-disclosure").click();
-      await page.locator(".tree-sub a.tree-link", { hasText: "資料" }).click();
+      await expandBookmarkTree(page);
+      await page.locator("#tree-pane .tree-sub a.tree-link", { hasText: "資料" }).click();
       await expect(page.locator(".item-list-title")).toContainText("資料");
       await expect(page.locator(".item-list li.item-card")).toHaveCount(1);
       await expect(page.locator(".item-list li.item-card .item-title")).toHaveText(

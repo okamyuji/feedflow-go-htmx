@@ -15,10 +15,11 @@ import (
 
 // stubSubscriptions SubscriptionServiceのスタブです。
 type stubSubscriptions struct {
-	feeds         []domain.Feed
-	subscribed    domain.Feed
-	subscribeErr  error
-	unsubscribeID string
+	feeds          []domain.Feed
+	subscribed     domain.Feed
+	subscribeErr   error
+	unsubscribeErr error
+	unsubscribeID  string
 }
 
 func (s *stubSubscriptions) Subscribe(_ context.Context, feedURL string, _ []string) (domain.Feed, error) {
@@ -42,6 +43,9 @@ func (s *stubSubscriptions) SubscribeFromSite(_ context.Context, siteURL string,
 }
 
 func (s *stubSubscriptions) Unsubscribe(feedID string) error {
+	if s.unsubscribeErr != nil {
+		return s.unsubscribeErr
+	}
 	s.unsubscribeID = feedID
 	return nil
 }
@@ -54,6 +58,7 @@ type stubItems struct {
 	items         map[string][]domain.Item
 	deletedFeedID string
 	deletedItemID string
+	deleteErr     error
 }
 
 func (s *stubItems) ListItems(feedID string) ([]domain.Item, error) {
@@ -89,6 +94,9 @@ func (s *stubItems) AddHighlight(_, _, _ string) error          { return nil }
 func (s *stubItems) DeleteItem(feedID, itemID string) error {
 	if !domain.IsSavedPagesFeed(feedID) {
 		return service.ErrNotSavedPagesFeed
+	}
+	if s.deleteErr != nil {
+		return s.deleteErr
 	}
 	items := s.items[feedID]
 	kept := make([]domain.Item, 0, len(items))

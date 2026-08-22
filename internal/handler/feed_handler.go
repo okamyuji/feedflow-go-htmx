@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
+	"github.com/okamyuji/feedflow-go-htmx/internal/service"
 )
 
 // manualPollTimeout HTTPのWriteTimeoutより短く打ち切り、手動更新がゲートウェイタイムアウトを誘発しないようにします。
@@ -279,6 +281,10 @@ func (h *Handler) feedUnsubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.deps.Subscriptions.Unsubscribe(feedID); err != nil {
+		if errors.Is(err, service.ErrNotUnsubscribable) {
+			http.Error(w, "this feed cannot be unsubscribed", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "failed to unsubscribe", http.StatusInternalServerError)
 		return
 	}

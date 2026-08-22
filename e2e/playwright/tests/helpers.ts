@@ -167,6 +167,40 @@ export async function openBookmarkView(page: Page): Promise<void> {
   await expect(page.locator(".add-url-form")).toBeVisible();
 }
 
+// expandBookmarkTree はブックマークノードの子ラベルが見える状態にします。
+// 子が選択中のときは既に開いた状態で描画されるため、閉じているときだけ開きます。
+export async function expandBookmarkTree(page: Page): Promise<void> {
+  const disclosure = page.locator("#tree-pane .tree-bookmark .tree-disclosure").first();
+  if ((await disclosure.getAttribute("aria-expanded")) !== "true") {
+    await disclosure.click();
+  }
+  await expect(page.locator("#tree-pane .tree-sub")).toBeVisible();
+}
+
+// clearBookmarkLabels は作成済みのラベルをすべて削除します。
+// ラベルは記事の保存状態と独立に残るため、テスト間の持ち越しをここで断ちます。
+export async function clearBookmarkLabels(page: Page): Promise<void> {
+  const acceptDialog = (dialog: import("@playwright/test").Dialog) => dialog.accept();
+  page.on("dialog", acceptDialog);
+  try {
+    if (!page.url().includes("/app")) {
+      await page.goto("/app");
+    }
+    for (;;) {
+      const remaining = await page.locator("#tree-pane .tree-label-delete").count();
+      if (remaining === 0) {
+        break;
+      }
+      // 削除ボタンは折り畳み中は不可視のため、先に開いてからクリックします。
+      await expandBookmarkTree(page);
+      await page.locator("#tree-pane .tree-label-delete").first().click();
+      await expect(page.locator("#tree-pane .tree-label-delete")).toHaveCount(remaining - 1);
+    }
+  } finally {
+    page.off("dialog", acceptDialog);
+  }
+}
+
 // clearSavedPages はブックマークビューの保存記事をすべて解除して空にします。
 // E2Eはスイート全体で1つのサーバを使うため、テスト間の持ち越しをここで断ちます。
 export async function clearSavedPages(page: Page): Promise<void> {

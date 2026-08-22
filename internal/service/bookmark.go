@@ -250,13 +250,27 @@ func (s *BookmarkService) ensureSavedPagesFeed() error {
 }
 
 // appendSavedPage 合成フィードの先頭に保存ページの記事を1件積みます。
+// タイトル取得には最大addURLFetchTimeoutかかるため、取得の前後で重複を確かめます。
+// 取得中に同じURLが別のリクエストで保存されていた場合は、新しく積まずにその記事を返します。
 func (s *BookmarkService) appendSavedPage(ctx context.Context, normalized, bookmarkID string) (domain.Item, error) {
+	title := s.fetchTitle(ctx, normalized)
+
+	existing, err := s.deps.Repo.Items(domain.SavedPagesFeedID)
+	if err != nil {
+		return domain.Item{}, fmt.Errorf("failed to load saved pages items: %w", err)
+	}
+	for _, it := range existing {
+		if sameNormalizedURL(it.Link, normalized) {
+			return s.markSaved(domain.SavedPagesFeedID, it.ID, bookmarkID)
+		}
+	}
+
 	now := s.deps.Clock.Now()
 	item := domain.Item{
 		ID:          s.deps.IDs.NewID(),
 		FeedID:      domain.SavedPagesFeedID,
 		GUID:        normalized,
-		Title:       s.fetchTitle(ctx, normalized),
+		Title:       title,
 		Link:        normalized,
 		PublishedAt: now,
 		FetchedAt:   now,
@@ -264,10 +278,6 @@ func (s *BookmarkService) appendSavedPage(ctx context.Context, normalized, bookm
 	}
 	if bookmarkID != "" {
 		item.BookmarkIDs = []string{bookmarkID}
-	}
-	existing, err := s.deps.Repo.Items(domain.SavedPagesFeedID)
-	if err != nil {
-		return domain.Item{}, fmt.Errorf("failed to load saved pages items: %w", err)
 	}
 	next := append([]domain.Item{item}, existing...)
 	if err := s.deps.Repo.SaveItems(domain.SavedPagesFeedID, next); err != nil {

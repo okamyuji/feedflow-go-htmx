@@ -34,9 +34,36 @@ func normalizeURL(rawURL string) (string, error) {
 	u.Host = strings.ToLower(u.Host)
 	u.Fragment = ""
 	u.RawFragment = ""
-	if len(u.Path) > 1 {
-		u.Path = strings.TrimRight(u.Path, "/")
-		u.RawPath = ""
+	// 認証情報はブックマークのリンクとして保存も表示もしたくないため落とします。
+	// あわせて、同じページをuserinfoの有無で二重に保存してしまうのも防げます。
+	u.User = nil
+	if err := trimTrailingSlash(u); err != nil {
+		return "", err
 	}
 	return u.String(), nil
+}
+
+// trimTrailingSlash ルート以外のパスの末尾スラッシュを取り除きます。
+// エスケープ済みのパスを操作してPathとRawPathを両方そろえます。
+// デコード済みのPathだけを触ってRawPathを捨てると、%2Fのような
+// エンコード済みの区切り文字が生のスラッシュとして再解釈され、別のリソースを指してしまいます。
+func trimTrailingSlash(u *url.URL) error {
+	escaped := u.EscapedPath()
+	if len(escaped) <= 1 {
+		return nil
+	}
+	trimmed := strings.TrimRight(escaped, "/")
+	if trimmed == escaped {
+		return nil
+	}
+	if trimmed == "" {
+		trimmed = "/"
+	}
+	decoded, err := url.PathUnescape(trimmed)
+	if err != nil {
+		return errors.Join(ErrInvalidURL, err)
+	}
+	u.Path = decoded
+	u.RawPath = trimmed
+	return nil
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 	"github.com/okamyuji/feedflow-go-htmx/internal/feed"
+	"github.com/okamyuji/feedflow-go-htmx/internal/service"
 )
 
 // readHeadLimit 単一フィード表示時に先頭へ既読として再表示する直近件数の上限です。
@@ -438,7 +440,9 @@ func (h *Handler) itemBookmark(w http.ResponseWriter, r *http.Request) {
 	}
 	bookmarked := r.FormValue("bookmarked") == "true"
 	if !bookmarked && domain.IsSavedPagesFeed(feedID) {
-		if err := h.deps.Items.DeleteItem(feedID, itemID); err != nil {
+		// 既に消えている記事への解除は成功として扱います。
+		// 別タブや再送で二重に届いた解除を、実害の無い競合として黙って受け流します。
+		if err := h.deps.Items.DeleteItem(feedID, itemID); err != nil && !errors.Is(err, service.ErrItemNotFound) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}

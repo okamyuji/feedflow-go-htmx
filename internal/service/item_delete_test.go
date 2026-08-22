@@ -3,6 +3,7 @@ package service_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 	"github.com/okamyuji/feedflow-go-htmx/internal/service"
@@ -125,5 +126,52 @@ func TestDeleteItemPropagatesSaveError(t *testing.T) {
 
 	if err := svc.DeleteItem(domain.SavedPagesFeedID, "i1"); !errors.Is(err, saveErr) {
 		t.Errorf("DeleteItem error = %v, want the save error", err)
+	}
+}
+
+func TestUnsubscribeRejectsSavedPagesFeed(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	if err := repo.SaveFeed(domain.Feed{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle}); err != nil {
+		t.Fatalf("SaveFeed returned error: %v", err)
+	}
+	if err := repo.SaveItems(domain.SavedPagesFeedID, []domain.Item{
+		{ID: "s1", FeedID: domain.SavedPagesFeedID, Bookmarked: true},
+	}); err != nil {
+		t.Fatalf("SaveItems returned error: %v", err)
+	}
+	deps := newDeps(repo, newFakeFetcher(), fakeParser{}, time.Now(), &fakeIDGen{})
+	svc := service.NewSubscriptionService(deps)
+
+	if err := svc.Unsubscribe(domain.SavedPagesFeedID); !errors.Is(err, service.ErrNotUnsubscribable) {
+		t.Fatalf("Unsubscribe error = %v, want ErrNotUnsubscribable", err)
+	}
+
+	if _, err := repo.Feed(domain.SavedPagesFeedID); err != nil {
+		t.Error("合成フィードが削除されています")
+	}
+	items, err := repo.Items(domain.SavedPagesFeedID)
+	if err != nil {
+		t.Fatalf("Items returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("保存ページが削除されています 件数=%d", len(items))
+	}
+}
+
+func TestUnsubscribeAllowsNormalFeed(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	if err := repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed"}); err != nil {
+		t.Fatalf("SaveFeed returned error: %v", err)
+	}
+	deps := newDeps(repo, newFakeFetcher(), fakeParser{}, time.Now(), &fakeIDGen{})
+	svc := service.NewSubscriptionService(deps)
+
+	if err := svc.Unsubscribe("f1"); err != nil {
+		t.Fatalf("Unsubscribe returned error: %v", err)
+	}
+	if _, err := repo.Feed("f1"); err == nil {
+		t.Error("通常フィードが削除されていません")
 	}
 }

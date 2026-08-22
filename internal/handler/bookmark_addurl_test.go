@@ -235,3 +235,25 @@ func TestAddURLFormOmitsSelectWhenLabelListFails(t *testing.T) {
 		t.Error("ラベル取得に失敗したときはセレクトを出してはいけません")
 	}
 }
+
+func TestFeedUnsubscribeRejectsSavedPagesFeed(t *testing.T) {
+	t.Parallel()
+	// 左ツリーに解除ボタンは出していませんが、ルート自体は到達可能です。
+	// 通してしまうと保存したページが記事ごと失われるため、ハンドラで拒否します。
+	subs := &stubSubscriptions{
+		feeds:          []domain.Feed{{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle}},
+		unsubscribeErr: service.ErrNotUnsubscribable,
+	}
+	items := &stubItems{items: map[string][]domain.Item{}}
+	h := newAppHandler(t, subs, items)
+	req := httptest.NewRequest(http.MethodDelete, "/app/feeds/"+domain.SavedPagesFeedID, nil)
+	req.SetPathValue("feedID", domain.SavedPagesFeedID)
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.feedUnsubscribe(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusForbidden)
+	}
+}
