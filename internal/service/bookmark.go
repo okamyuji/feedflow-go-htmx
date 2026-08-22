@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"mime"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
@@ -32,6 +34,10 @@ var ErrBookmarkNotFound = errors.New("bookmark not found")
 type BookmarkService struct {
 	deps  Deps
 	items *ItemService
+	// addURL 任意URLの追加を直列化します。
+	// 重複確認から保存までは複数回リポジトリを触るため、間に別の追加が割り込むと
+	// 同じURLが二重に積まれたり、片方の保存が失われたりします。
+	addURL sync.Mutex
 }
 
 // NewBookmarkService 依存束とItemServiceを受け取りBookmarkServiceを構築します。
@@ -147,14 +153,22 @@ func (s *BookmarkService) AddURL(ctx context.Context, rawURL, bookmarkID string)
 			return domain.Item{}, err
 		}
 	}
-	it, found, err := s.bookmarkExistingItem(normalized, bookmarkID)
+
+	s.addURL.Lock()
+	defer s.addURL.Unlock()
+
+	feeds, err := s.deps.Repo.Feeds()
+	if err != nil {
+		return domain.Item{}, fmt.Errorf("failed to load feeds: %w", err)
+	}
+	it, found, err := s.bookmarkExistingItem(feeds, normalized, bookmarkID)
 	if err != nil {
 		return domain.Item{}, err
 	}
 	if found {
 		return it, nil
 	}
-	if err := s.ensureSavedPagesFeed(); err != nil {
+	if err := s.ensureSavedPagesFeed(feeds); err != nil {
 		return domain.Item{}, err
 	}
 	return s.appendSavedPage(ctx, normalized, bookmarkID)
@@ -176,11 +190,7 @@ func (s *BookmarkService) requireBookmark(bookmarkID string) error {
 
 // bookmarkExistingItem 正規化URLに一致する既存記事を探し、見つかれば保存済みにして返します。
 // 合成フィードの記事も探索対象に含むため、同じURLを二度追加しても記事は増えません。
-func (s *BookmarkService) bookmarkExistingItem(normalized, bookmarkID string) (domain.Item, bool, error) {
-	feeds, err := s.deps.Repo.Feeds()
-	if err != nil {
-		return domain.Item{}, false, fmt.Errorf("failed to load feeds: %w", err)
-	}
+func (s *BookmarkService) bookmarkExistingItem(feeds []domain.Feed, normalized, bookmarkID string) (domain.Item, bool, error) {
 	for _, f := range feeds {
 		items, err := s.deps.Repo.Items(f.ID)
 		if err != nil {
@@ -211,14 +221,15 @@ func sameNormalizedURL(link, normalized string) bool {
 }
 
 // markSaved 指定記事を保存済みにし、ラベル指定があれば所属させて、更新後の記事を返します。
+// ラベル指定があるときはaddBookmarkだけを呼びます。addBookmarkは所属を足すと保存状態も立てるため、
+// 書き込みが1回で済み、2回目が失敗してラベルなしで保存だけ残る中途半端な状態を作りません。
 func (s *BookmarkService) markSaved(feedID, itemID, bookmarkID string) (domain.Item, error) {
-	if err := s.items.SetBookmarked(feedID, itemID, true); err != nil {
-		return domain.Item{}, err
-	}
+	mutate := func() error { return s.items.SetBookmarked(feedID, itemID, true) }
 	if bookmarkID != "" {
-		if err := s.items.addBookmark(feedID, itemID, bookmarkID); err != nil {
-			return domain.Item{}, err
-		}
+		mutate = func() error { return s.items.addBookmark(feedID, itemID, bookmarkID) }
+	}
+	if err := mutate(); err != nil {
+		return domain.Item{}, err
 	}
 	items, err := s.deps.Repo.Items(feedID)
 	if err != nil {
@@ -234,9 +245,14 @@ func (s *BookmarkService) markSaved(feedID, itemID, bookmarkID string) (domain.I
 
 // ensureSavedPagesFeed 合成フィードが無ければ作成します。
 // 購読フィードではないため、ポーリング間隔は手動のみにします。
-func (s *BookmarkService) ensureSavedPagesFeed() error {
-	if _, err := s.deps.Repo.Feed(domain.SavedPagesFeedID); err == nil {
-		return nil
+// 存在の判定には読み込み済みのフィード一覧を使います。
+// Feed(id)の戻り値で判定すると、読み込み失敗と不在を区別できず、
+// 一時的な読み込み失敗のたびに既存の合成フィードを作り直して上書きしてしまいます。
+func (s *BookmarkService) ensureSavedPagesFeed(feeds []domain.Feed) error {
+	for _, f := range feeds {
+		if domain.IsSavedPagesFeed(f.ID) {
+			return nil
+		}
 	}
 	f := domain.Feed{
 		ID:           domain.SavedPagesFeedID,
@@ -294,7 +310,8 @@ func (s *BookmarkService) fetchTitle(ctx context.Context, pageURL string) string
 	defer cancel()
 	res, err := s.deps.Fetch.Fetch(ctx, port.FetchRequest{URL: pageURL})
 	if err != nil {
-		slog.Warn("failed to fetch page for title", "url", pageURL, "error", err)
+		// クエリ文字列に資格情報が混じり得るため、URL全体は残さずホスト名だけにします。
+		slog.Warn("failed to fetch page for title", "host", hostOf(pageURL), "error", err)
 		return pageURL
 	}
 	if !isHTMLContentType(res.ContentType) {
@@ -314,4 +331,13 @@ func isHTMLContentType(contentType string) bool {
 		return false
 	}
 	return mediaType == "text/html" || mediaType == "application/xhtml+xml"
+}
+
+// hostOf ログに出しても差し支えのないホスト名を返します。解析できない場合は空文字を返します。
+func hostOf(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }

@@ -138,3 +138,32 @@ func TestExtractMetaDecodesShiftJIS(t *testing.T) {
 		t.Errorf("ExtractMeta().Title = %q, want %q", got.Title, "日本語")
 	}
 }
+
+func TestExtractMetaDecodesEUCJP(t *testing.T) {
+	t.Parallel()
+	// EUC-JPで<html><head><title>日本語</title></head></html>をエンコードしたバイト列です。
+	eucjp := []byte{
+		0x3c, 0x68, 0x74, 0x6d, 0x6c, 0x3e, 0x3c, 0x68, 0x65, 0x61, 0x64, 0x3e,
+		0x3c, 0x74, 0x69, 0x74, 0x6c, 0x65, 0x3e,
+		0xc6, 0xfc, 0xcb, 0xdc, 0xb8, 0xec,
+		0x3c, 0x2f, 0x74, 0x69, 0x74, 0x6c, 0x65, 0x3e,
+		0x3c, 0x2f, 0x68, 0x65, 0x61, 0x64, 0x3e, 0x3c, 0x2f, 0x68, 0x74, 0x6d, 0x6c, 0x3e,
+	}
+	got := feed.ExtractMeta(eucjp, "text/html; charset=EUC-JP")
+	if got.Title != "日本語" {
+		t.Errorf("ExtractMeta().Title = %q, want %q", got.Title, "日本語")
+	}
+}
+
+func TestExtractMetaDecodesCharsetFromMetaTag(t *testing.T) {
+	t.Parallel()
+	// Content-Typeに文字コードが無くても、meta charsetから解決します。
+	sjis := append(
+		[]byte(`<html><head><meta charset="Shift_JIS"><title>`),
+		append([]byte{0x93, 0xfa, 0x96, 0x7b, 0x8c, 0xea}, []byte(`</title></head></html>`)...)...,
+	)
+	got := feed.ExtractMeta(sjis, "text/html")
+	if got.Title != "日本語" {
+		t.Errorf("ExtractMeta().Title = %q, want %q", got.Title, "日本語")
+	}
+}

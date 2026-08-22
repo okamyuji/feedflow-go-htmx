@@ -1,8 +1,12 @@
 package service_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -438,5 +442,130 @@ func TestAddURLDoesNotDuplicateWhenSavedDuringFetch(t *testing.T) {
 	}
 	if len(saved) != 1 {
 		t.Errorf("item count = %d, want 1 (the url must not be added twice)", len(saved))
+	}
+}
+
+func TestAddURLDoesNotRecreateFeedOnLoadFailure(t *testing.T) {
+	t.Parallel()
+	// フィード一覧の読み込みに失敗したときは、合成フィードを作り直さずエラーを返します。
+	// 不在と読み込み失敗を取り違えると、既存の合成フィードを上書きして保存記事を失います。
+	svc, repo, _ := newAddURLSvc()
+	boom := errors.New("boom")
+	repo.failOn["Feeds"] = boom
+
+	if _, err := svc.AddURL(context.Background(), "https://example.com/a", ""); !errors.Is(err, boom) {
+		t.Errorf("AddURL error = %v, want the injected error", err)
+	}
+	if len(repo.feeds) != 0 {
+		t.Errorf("フィードが作られています: %v", repo.feeds)
+	}
+}
+
+func TestAddURLKeepsExistingSavedPagesFeedSettings(t *testing.T) {
+	t.Parallel()
+	// 既存の合成フィードがあるときは作り直さず、そのレコードをそのまま使います。
+	svc, repo, fetch := newAddURLSvc()
+	if err := repo.SaveFeed(domain.Feed{
+		ID:                domain.SavedPagesFeedID,
+		Title:             domain.SavedPagesFeedTitle,
+		PollInterval:      domain.PollManualOnly,
+		ConsecutiveErrors: 3,
+	}); err != nil {
+		t.Fatalf("SaveFeed returned error: %v", err)
+	}
+	serveHTML(fetch, "https://example.com/a", pageHTML)
+
+	if _, err := svc.AddURL(context.Background(), "https://example.com/a", ""); err != nil {
+		t.Fatalf("AddURL returned error: %v", err)
+	}
+
+	f, err := repo.Feed(domain.SavedPagesFeedID)
+	if err != nil {
+		t.Fatalf("Feed returned error: %v", err)
+	}
+	if f.ConsecutiveErrors != 3 {
+		t.Errorf("既存のフィードレコードが上書きされています: %+v", f)
+	}
+}
+
+func TestAddURLSerializesConcurrentAdditions(t *testing.T) {
+	t.Parallel()
+	// 同じURLを同時に追加しても記事は1件だけになります。
+	svc, repo, fetch := newAddURLSvc()
+	serveHTML(fetch, "https://example.com/a", pageHTML)
+
+	const callers = 8
+	var wg sync.WaitGroup
+	errs := make([]error, callers)
+	for i := range callers {
+		wg.Go(func() {
+			_, errs[i] = svc.AddURL(context.Background(), "https://example.com/a", "")
+		})
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("AddURL[%d] returned error: %v", i, err)
+		}
+	}
+	items, err := repo.Items(domain.SavedPagesFeedID)
+	if err != nil {
+		t.Fatalf("Items returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("item count = %d, want 1", len(items))
+	}
+}
+
+func TestAddURLAttachesLabelToExistingItemInOneWrite(t *testing.T) {
+	t.Parallel()
+	// ラベル指定つきで既存記事を保存するときは、書き込みを1回で終えます。
+	// 2回に分けると、2回目の失敗でラベルなしの保存だけが残ってしまいます。
+	svc, repo, _ := newAddURLSvc()
+	if err := repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed"}); err != nil {
+		t.Fatalf("SaveFeed returned error: %v", err)
+	}
+	if err := repo.SaveItems("f1", []domain.Item{{ID: "i1", FeedID: "f1", Link: "https://example.com/a"}}); err != nil {
+		t.Fatalf("SaveItems returned error: %v", err)
+	}
+	if err := repo.SaveBookmark(domain.Bookmark{ID: "b1", Name: "あとで"}); err != nil {
+		t.Fatalf("SaveBookmark returned error: %v", err)
+	}
+	repo.callCount["SaveItems"] = 0
+
+	it, err := svc.AddURL(context.Background(), "https://example.com/a", "b1")
+	if err != nil {
+		t.Fatalf("AddURL returned error: %v", err)
+	}
+	if !it.Bookmarked || len(it.BookmarkIDs) != 1 || it.BookmarkIDs[0] != "b1" {
+		t.Errorf("item = %+v, want bookmarked with label b1", it)
+	}
+	if got := repo.callCount["SaveItems"]; got != 1 {
+		t.Errorf("SaveItems call count = %d, want 1", got)
+	}
+}
+
+func TestFetchTitleFailureDoesNotLogFullURL(t *testing.T) {
+	// 既定ロガーを差し替えるため、他のテストと並行させません。
+	// 取得に失敗してもクエリ文字列をログに残しません。資格情報が混じり得るためです。
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	svc, _, fetch := newAddURLSvc()
+	fetch.err = errors.New("network down")
+
+	if _, err := svc.AddURL(context.Background(), "https://example.com/a?token=s3cret", ""); err != nil {
+		t.Fatalf("AddURL returned error: %v", err)
+	}
+
+	logged := buf.String()
+	if strings.Contains(logged, "s3cret") {
+		t.Errorf("ログにクエリ文字列が残っています: %q", logged)
+	}
+	if !strings.Contains(logged, "example.com") {
+		t.Errorf("ログにホスト名が出ていません: %q", logged)
 	}
 }

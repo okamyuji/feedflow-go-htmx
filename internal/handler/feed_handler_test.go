@@ -100,13 +100,18 @@ func (s *stubItems) DeleteItem(feedID, itemID string) error {
 	}
 	items := s.items[feedID]
 	kept := make([]domain.Item, 0, len(items))
+	found := false
 	for _, it := range items {
 		if it.ID == itemID {
+			found = true
 			s.deletedFeedID = feedID
 			s.deletedItemID = itemID
 			continue
 		}
 		kept = append(kept, it)
+	}
+	if !found {
+		return service.ErrItemNotFound
 	}
 	s.items[feedID] = kept
 	return nil

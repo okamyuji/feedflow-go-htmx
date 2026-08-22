@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
-	"github.com/okamyuji/feedflow-go-htmx/internal/service"
 )
 
 // TestItemBookmarkSaveRendersPicker 保存(bookmarked=true)はピッカーを再描画し、解除ボタン(=保存済み状態)を出します。
@@ -320,8 +319,8 @@ func TestItemBookmarkKeepsSubscribedItemOnUnset(t *testing.T) {
 func TestItemBookmarkTreatsMissingSavedPageAsSuccess(t *testing.T) {
 	t.Parallel()
 	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle}}}
+	// スタブは本実装と同じく、対象が無ければErrItemNotFoundを返します。
 	items := &stubItems{items: map[string][]domain.Item{domain.SavedPagesFeedID: {}}}
-	items.deleteErr = service.ErrItemNotFound
 	h := newAppHandler(t, subs, items)
 	form := url.Values{"bookmarked": {"false"}}
 	req := httptest.NewRequest(http.MethodPost, "/app/items/"+domain.SavedPagesFeedID+"/gone/bookmark", strings.NewReader(form.Encode()))
