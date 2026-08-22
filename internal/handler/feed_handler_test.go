@@ -116,9 +116,10 @@ type stubBookmarks struct {
 	addedLabel  string
 	addedItem   domain.Item
 	addURLError error
+	listErr     error
 }
 
-func (s *stubBookmarks) List() ([]domain.Bookmark, error) { return s.list, nil }
+func (s *stubBookmarks) List() ([]domain.Bookmark, error) { return s.list, s.listErr }
 
 // AddURL 入力を記録し、仕込まれた結果を返します。
 func (s *stubBookmarks) AddURL(_ context.Context, rawURL, bookmarkID string) (domain.Item, error) {

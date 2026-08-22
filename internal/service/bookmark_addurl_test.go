@@ -332,3 +332,62 @@ func TestAddURLPropagatesBookmarkListError(t *testing.T) {
 		t.Errorf("AddURL error = %v, want the injected error", err)
 	}
 }
+
+func TestAddURLPropagatesErrorWhenMarkingExistingItem(t *testing.T) {
+	t.Parallel()
+	svc, repo, _ := newAddURLSvc()
+	if err := repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed"}); err != nil {
+		t.Fatalf("SaveFeed returned error: %v", err)
+	}
+	if err := repo.SaveItems("f1", []domain.Item{{ID: "i1", FeedID: "f1", Link: "https://example.com/a"}}); err != nil {
+		t.Fatalf("SaveItems returned error: %v", err)
+	}
+	boom := errors.New("boom")
+	repo.failOn["SaveItems"] = boom
+
+	if _, err := svc.AddURL(context.Background(), "https://example.com/a", ""); !errors.Is(err, boom) {
+		t.Errorf("AddURL error = %v, want the injected error", err)
+	}
+}
+
+func TestAddURLPropagatesErrorWhenAttachingLabelToExistingItem(t *testing.T) {
+	t.Parallel()
+	svc, repo, _ := newAddURLSvc()
+	if err := repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed"}); err != nil {
+		t.Fatalf("SaveFeed returned error: %v", err)
+	}
+	if err := repo.SaveItems("f1", []domain.Item{{ID: "i1", FeedID: "f1", Link: "https://example.com/a"}}); err != nil {
+		t.Fatalf("SaveItems returned error: %v", err)
+	}
+	if err := repo.SaveBookmark(domain.Bookmark{ID: "b1", Name: "あとで"}); err != nil {
+		t.Fatalf("SaveBookmark returned error: %v", err)
+	}
+	// 記事が見つからない状態にして、ラベル付与の失敗を再現します。
+	if err := repo.SaveItems("f1", []domain.Item{{ID: "i1", FeedID: "f1", Link: "https://example.com/a"}}); err != nil {
+		t.Fatalf("SaveItems returned error: %v", err)
+	}
+	boom := errors.New("boom")
+	repo.failOn["SaveItems"] = boom
+
+	if _, err := svc.AddURL(context.Background(), "https://example.com/a", "b1"); !errors.Is(err, boom) {
+		t.Errorf("AddURL error = %v, want the injected error", err)
+	}
+}
+
+func TestAddURLPropagatesErrorWhenRereadingUpdatedItem(t *testing.T) {
+	t.Parallel()
+	svc, repo, _ := newAddURLSvc()
+	if err := repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed"}); err != nil {
+		t.Fatalf("SaveFeed returned error: %v", err)
+	}
+	if err := repo.SaveItems("f1", []domain.Item{{ID: "i1", FeedID: "f1", Link: "https://example.com/a"}}); err != nil {
+		t.Fatalf("SaveItems returned error: %v", err)
+	}
+	// 探索と更新で2回読んだあと、更新後の読み直しだけを失敗させます。
+	repo.callCount["Items"] = 0
+	repo.failAfter["Items"] = 2
+
+	if _, err := svc.AddURL(context.Background(), "https://example.com/a", ""); err == nil {
+		t.Error("AddURL returned nil, want the re-read error")
+	}
+}

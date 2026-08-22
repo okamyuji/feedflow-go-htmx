@@ -77,6 +77,10 @@ type fakeRepo struct {
 	settings   domain.Settings
 	user       domain.User
 	failOn     map[string]error
+	// failAfter メソッド名ごとに、指定回数の成功後から失敗させる回数を保持します。
+	// 同じメソッドを複数回呼ぶ処理の、後段だけを失敗させたいテストに使います。
+	failAfter map[string]int
+	callCount map[string]int
 }
 
 func newFakeRepo() *fakeRepo {
@@ -88,10 +92,18 @@ func newFakeRepo() *fakeRepo {
 		filters:    map[string]domain.MuteFilter{},
 		settings:   domain.DefaultSettings(),
 		failOn:     map[string]error{},
+		failAfter:  map[string]int{},
+		callCount:  map[string]int{},
 	}
 }
 
-func (r *fakeRepo) fail(method string) error { return r.failOn[method] }
+func (r *fakeRepo) fail(method string) error {
+	r.callCount[method]++
+	if n, ok := r.failAfter[method]; ok && r.callCount[method] > n {
+		return errNotFound
+	}
+	return r.failOn[method]
+}
 
 func (r *fakeRepo) Feeds() ([]domain.Feed, error) {
 	if err := r.fail("Feeds"); err != nil {

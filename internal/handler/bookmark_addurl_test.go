@@ -217,3 +217,21 @@ func TestAddURLFormCarriesCSRFToken(t *testing.T) {
 		t.Errorf("フォームにCSRFトークンが埋まっていません: %q", rec.Body.String())
 	}
 }
+
+func TestAddURLFormOmitsSelectWhenLabelListFails(t *testing.T) {
+	t.Parallel()
+	// ラベル一覧の取得に失敗しても、URLを入力し直せるようフォーム自体は返します。
+	h, _, bookmarks := newAddURLHandler(t, []domain.Bookmark{{ID: "b1", Name: "あとで"}})
+	bookmarks.addURLError = service.ErrInvalidURL
+	bookmarks.listErr = errAddURLStub
+
+	rec := postAddURL(t, h, "?view=bookmark", url.Values{"url": {"bad"}})
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="add-url-form"`) {
+		t.Errorf("ラベル取得に失敗してもフォームは出すべき: %q", body)
+	}
+	if strings.Contains(body, `name="bookmark_id"`) {
+		t.Error("ラベル取得に失敗したときはセレクトを出してはいけません")
+	}
+}
