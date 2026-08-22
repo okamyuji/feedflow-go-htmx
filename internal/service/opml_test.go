@@ -180,3 +180,27 @@ func TestOPMLServiceImportContinuesOnFailure(t *testing.T) {
 		t.Fatalf("repo feeds got %d want 1", len(feeds))
 	}
 }
+
+func TestOPMLServiceExportExcludesSavedPagesFeed(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	_ = repo.SaveFeed(domain.Feed{ID: "f1", Title: "Feed One", FeedURL: "https://a.example/feed", SiteURL: "https://a.example"})
+	_ = repo.SaveFeed(domain.Feed{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle})
+	deps := newOPMLDeps(repo, newFakeFetcher(), fakeParser{}, time.Now())
+	svc := service.NewOPMLService(deps, service.NewSubscriptionService(deps))
+
+	data, err := svc.Export()
+	if err != nil {
+		t.Fatalf("Export returned error: %v", err)
+	}
+	out := string(data)
+	if strings.Contains(out, domain.SavedPagesFeedTitle) {
+		t.Errorf("export contained the saved pages feed: %s", out)
+	}
+	if strings.Contains(out, `xmlUrl=""`) {
+		t.Errorf("export contained an outline with an empty xmlUrl: %s", out)
+	}
+	if !strings.Contains(out, `xmlUrl="https://a.example/feed"`) {
+		t.Errorf("export dropped the subscribed feed: %s", out)
+	}
+}

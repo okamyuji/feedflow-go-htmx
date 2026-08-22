@@ -44,7 +44,15 @@ func (h *Handler) buildTree() ([]feedTreeNode, error) {
 		return nil, err
 	}
 
-	feedNodes := orderFeedNodes(feeds, unreadByFeed, h.feedSortSettings())
+	// 合成フィードは購読フィードではないため、左ペインには出しません。
+	subscribed := make([]domain.Feed, 0, len(feeds))
+	for _, f := range feeds {
+		if domain.IsSavedPagesFeed(f.ID) {
+			continue
+		}
+		subscribed = append(subscribed, f)
+	}
+	feedNodes := orderFeedNodes(subscribed, unreadByFeed, h.feedSortSettings())
 	nodes := make([]feedTreeNode, 0, 4+len(feedNodes))
 	nodes = append(nodes,
 		feedTreeNode{Kind: "all", Label: "すべて", UnreadCount: unreadTotal},

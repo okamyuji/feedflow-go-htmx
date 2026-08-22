@@ -45,7 +45,11 @@ func NewService(
 // PollFeed 指定フィードを取得し新着記事を反映して新着件数を返します。
 // 取得に失敗した場合は連続エラー数を1増やして保存し、エラーを返します。
 // サーバが未更新を示した場合は記事を増やさず最終取得時刻だけ更新します。
+// 合成フィードは取得元URLを持たないため、何もせず0件を返します。
 func (s *Service) PollFeed(ctx context.Context, feedID string) (int, error) {
+	if domain.IsSavedPagesFeed(feedID) {
+		return 0, nil
+	}
 	feed, err := s.repo.Feed(feedID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to load feed %q: %w", feedID, err)
@@ -95,6 +99,10 @@ func (s *Service) PollAll(ctx context.Context) (int, error) {
 	now := s.clock.Now()
 	ids := make([]string, 0, len(feeds))
 	for _, feed := range feeds {
+		// 合成フィードは取得元URLを持たないため、期限判定の前に外します。
+		if domain.IsSavedPagesFeed(feed.ID) {
+			continue
+		}
 		if dueForPollWithJitter(feed, settings, now, s.jitter) {
 			ids = append(ids, feed.ID)
 		}
@@ -116,6 +124,10 @@ func (s *Service) PollAllNow(ctx context.Context) (int, error) {
 
 	ids := make([]string, 0, len(feeds))
 	for _, feed := range feeds {
+		// 合成フィードは取得元URLを持たないため、全件取得の対象から外します。
+		if domain.IsSavedPagesFeed(feed.ID) {
+			continue
+		}
 		ids = append(ids, feed.ID)
 	}
 

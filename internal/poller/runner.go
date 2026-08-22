@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 	"github.com/okamyuji/feedflow-go-htmx/internal/port"
 )
 
@@ -51,6 +52,10 @@ func (r *Runner) dueFeedIDs() ([]string, error) {
 	ids := make([]string, 0, len(feeds))
 	zeroJitter := func(_ time.Duration) time.Duration { return 0 }
 	for _, f := range feeds {
+		// 合成フィードは取得元URLを持たないため、期限判定の前に外します。
+		if domain.IsSavedPagesFeed(f.ID) {
+			continue
+		}
 		if dueForPollWithJitter(f, settings, now, zeroJitter) {
 			ids = append(ids, f.ID)
 		}
