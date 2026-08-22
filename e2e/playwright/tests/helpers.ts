@@ -68,6 +68,32 @@ export async function startFeedServer(
   return { url, close };
 }
 
+// SAMPLE_PAGE_HTML は任意URL保存の検証に使うページ本文です。og:titleとtitleの両方を持ちます。
+export const SAMPLE_PAGE_HTML = `<!doctype html><html lang="ja"><head>
+<meta charset="utf-8">
+<meta property="og:title" content="保存したページの見出し">
+<title>タイトル要素</title>
+</head><body><p>本文</p></body></html>`;
+
+// startPageServer はテスト用のHTMLページ配信HTTPサーバを起動してURLを返します。
+// 任意URL保存のタイトル取得を検証するために使います。
+export async function startPageServer(
+  html = SAMPLE_PAGE_HTML,
+): Promise<{ url: string; close: () => Promise<void> }> {
+  const server: Server = createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(html);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${addr.port}/page`;
+  const close = () =>
+    new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    );
+  return { url, close };
+}
+
 // completeSetup は初回セットアップ画面でユーザーを登録します。
 // テストサーバはスイート全体で共有されるため、登録済みなら/setupは/loginへ誘導されます。
 // その場合は登録を飛ばし、初回だけ登録する冪等な実装にします。
@@ -130,4 +156,40 @@ export async function addFeed(page: Page, feedURL: string): Promise<void> {
   await page.fill('.subscribe-form input[name="url"]', feedURL);
   await page.click('.subscribe-form button[type="submit"]');
   await expect(page.locator("#tree-pane")).toContainText("E2E Sample Feed");
+}
+
+// openBookmarkView はブックマークビュー(全保存記事)を開きます。
+export async function openBookmarkView(page: Page): Promise<void> {
+  if (!page.url().includes("/app")) {
+    await page.goto("/app");
+  }
+  await page.locator(".tree-bookmark .tree-link", { hasText: "ブックマーク" }).first().click();
+  await expect(page.locator(".add-url-form")).toBeVisible();
+}
+
+// clearSavedPages はブックマークビューの保存記事をすべて解除して空にします。
+// E2Eはスイート全体で1つのサーバを使うため、テスト間の持ち越しをここで断ちます。
+export async function clearSavedPages(page: Page): Promise<void> {
+  await openBookmarkView(page);
+  for (;;) {
+    const cards = page.locator(".item-list li.item-card");
+    const remaining = await cards.count();
+    if (remaining === 0) {
+      break;
+    }
+    const card = cards.first();
+    await card.locator(".bookmark-btn").click();
+    await card.locator(".bookmark-panel .bookmark-save-btn", { hasText: "ブックマーク解除" }).click();
+    await expect(page.locator(".item-list li.item-card")).toHaveCount(remaining - 1);
+  }
+}
+
+// addSavedURL はブックマークビューのフォームからURLを保存します。
+// labelを渡すとそのラベルを選んで追加します。
+export async function addSavedURL(page: Page, pageURL: string, label?: string): Promise<void> {
+  await page.locator(".add-url-form .add-url-input").fill(pageURL);
+  if (label !== undefined) {
+    await page.locator(".add-url-form .add-url-select").selectOption({ label });
+  }
+  await page.locator(".add-url-form button[type=submit]").click();
 }
