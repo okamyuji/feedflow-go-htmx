@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/service"
 )
@@ -180,4 +181,69 @@ func (h *Handler) renderTreePane(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.renderPartial(w, http.StatusOK, "_tree_pane.html", data)
+}
+
+// addURLErrorMessage AddURLのエラーを画面に出す日本語の文言へ変換します。
+// 想定外のエラーは内部事情を漏らさないよう一般的な文言にまとめます。
+func addURLErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, service.ErrInvalidURL):
+		return "URLの形式が正しくありません。httpまたはhttpsで始まるURLを入力してください。"
+	case errors.Is(err, service.ErrBookmarkNotFound):
+		return "指定のラベルが見つかりません。画面を再読み込みしてからもう一度お試しください。"
+	default:
+		return "保存できませんでした。しばらくしてからもう一度お試しください。"
+	}
+}
+
+// bookmarkAddURL 入力されたURLをブックマークへ追加し、現在の一覧を再描画します。
+// 追加に失敗した場合もHTTP 200のまま、入力欄の上にエラー文言を出したフォームを返します。
+// 一覧の描画条件は送信先クエリで引き継ぐため、追加前と同じ絞り込みを保てます。
+func (h *Handler) bookmarkAddURL(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	rawURL := r.FormValue("url")
+	bookmarkID := r.FormValue("bookmark_id")
+	if _, err := h.deps.Bookmarks.AddURL(r.Context(), rawURL, bookmarkID); err != nil {
+		slog.Warn("failed to add url to bookmarks", "error", err)
+		h.renderAddURLForm(w, r, addURLErrorMessage(err))
+		return
+	}
+	h.itemList(w, r)
+}
+
+// renderAddURLForm URL追加フォームだけを描画して返します。エラー文言を伴う再描画に使います。
+func (h *Handler) renderAddURLForm(w http.ResponseWriter, r *http.Request, message string) {
+	sess := sessionFromContext(r.Context())
+	data := pageData{
+		CSRFToken:       sess.CSRFToken,
+		ShowAddURL:      true,
+		AddURLPostURL:   addURLPostURL(r),
+		AddURLError:     message,
+		BookmarkOptions: h.bookmarkOptions(),
+	}
+	h.renderPartial(w, http.StatusOK, "_bookmark_add_url.html", data)
+}
+
+// bookmarkOptions URL追加フォームのラベル選択肢を返します。
+// 一覧の取得に失敗した場合は選択肢なしとして扱い、URLの追加自体は続けられるようにします。
+func (h *Handler) bookmarkOptions() []bookmarkOption {
+	bms, err := h.deps.Bookmarks.List()
+	if err != nil {
+		slog.Error("failed to load bookmarks for the add url form", "error", err)
+		return nil
+	}
+	options := make([]bookmarkOption, 0, len(bms))
+	for _, b := range bms {
+		options = append(options, bookmarkOption{ID: b.ID, Name: b.Name})
+	}
+	return options
+}
+
+// addURLPostURL 現在の表示条件を保ったままURLを追加するPOST先を返します。
+func addURLPostURL(r *http.Request) string {
+	u := url.URL{Path: "/app/bookmarks/add-url", RawQuery: r.URL.RawQuery}
+	return u.String()
 }

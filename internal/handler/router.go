@@ -120,6 +120,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /app/items/{feedID}/{itemID}/bookmark", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemBookmark))))
 	mux.Handle("POST /app/items/{feedID}/{itemID}/bookmarks/toggle", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkToggle))))
 	mux.Handle("POST /app/bookmarks", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkCreate))))
+	mux.Handle("POST /app/bookmarks/add-url", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkAddURL))))
 	mux.Handle("POST /app/bookmarks/{id}/rename", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkRename))))
 	mux.Handle("DELETE /app/bookmarks/{id}", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.bookmarkDelete))))
 	mux.Handle("POST /app/settings", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.settingsUpdate))))

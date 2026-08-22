@@ -1,0 +1,29 @@
+{{ define "_bookmark_add_url.html" }}
+<form
+  class="add-url-form"
+  hx-post="{{ .AddURLPostURL }}"
+  hx-target="#main-pane"
+  hx-swap="innerHTML"
+  hx-disabled-elt="find button"
+>
+  <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+  {{ if .AddURLError }}<p class="add-url-error" role="alert">{{ .AddURLError }}</p>{{ end }}
+  <div class="add-url-row">
+    <input
+      class="add-url-input"
+      type="url"
+      name="url"
+      required
+      placeholder="https://example.com/article"
+      aria-label="保存するURL"
+    >
+    {{ if .BookmarkOptions }}
+    <select class="add-url-select" name="bookmark_id" aria-label="追加先のラベル">
+      <option value="">ラベルなし</option>
+      {{ range .BookmarkOptions }}<option value="{{ .ID }}">{{ .Name }}</option>{{ end }}
+    </select>
+    {{ end }}
+    <button class="btn-ghost" type="submit">追加</button>
+  </div>
+</form>
+{{ end }}

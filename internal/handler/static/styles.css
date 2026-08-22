@@ -1127,3 +1127,42 @@ button:disabled {
     animation: none !important;
   }
 }
+
+/* 任意URLの保存フォーム。ブックマーク系ビューの一覧バー直下に置きます。 */
+.add-url-form {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.add-url-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.add-url-input {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.add-url-select {
+  flex: 0 0 auto;
+}
+
+.add-url-error {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: var(--text-sm);
+}
+
+/* 狭い画面では入力欄とラベル選択を全幅にして折り返します。 */
+@media (max-width: 640px) {
+  .add-url-input,
+  .add-url-select {
+    flex: 1 1 100%;
+  }
+}
