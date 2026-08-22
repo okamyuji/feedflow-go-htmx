@@ -43,6 +43,8 @@ type ItemService interface {
 	SetNote(feedID, itemID, note string) error
 	// AddHighlight 指定記事にハイライトを追加します。
 	AddHighlight(feedID, itemID, highlight string) error
+	// DeleteItem 合成フィードから指定記事を削除します。合成フィード以外のフィードIDは拒否します。
+	DeleteItem(feedID, itemID string) error
 }
 
 // BookmarkService 名称付きラベルの一覧と作成、記事の所属操作、リネーム、削除を担う抽象です。
@@ -59,6 +61,9 @@ type BookmarkService interface {
 	Rename(id, name string) error
 	// Delete 指定IDのラベルを削除します。所属記事の保存状態は維持されます。
 	Delete(id string) error
+	// AddURL 任意のURLをブックマークに追加し、保存された記事を返します。
+	// 既存の同一URL記事があればそれを保存済みにし、無ければ合成フィードへ新規作成します。
+	AddURL(ctx context.Context, rawURL, bookmarkID string) (domain.Item, error)
 }
 
 // RetentionService 保持ポリシーの適用を担う抽象です。設計書のセクション4.1に対応します。
