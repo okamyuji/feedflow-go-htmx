@@ -10,14 +10,16 @@ import (
 	"testing"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
+	"github.com/okamyuji/feedflow-go-htmx/internal/service"
 )
 
 // stubSubscriptions SubscriptionServiceのスタブです。
 type stubSubscriptions struct {
-	feeds         []domain.Feed
-	subscribed    domain.Feed
-	subscribeErr  error
-	unsubscribeID string
+	feeds          []domain.Feed
+	subscribed     domain.Feed
+	subscribeErr   error
+	unsubscribeErr error
+	unsubscribeID  string
 }
 
 func (s *stubSubscriptions) Subscribe(_ context.Context, feedURL string, _ []string) (domain.Feed, error) {
@@ -41,6 +43,9 @@ func (s *stubSubscriptions) SubscribeFromSite(_ context.Context, siteURL string,
 }
 
 func (s *stubSubscriptions) Unsubscribe(feedID string) error {
+	if s.unsubscribeErr != nil {
+		return s.unsubscribeErr
+	}
 	s.unsubscribeID = feedID
 	return nil
 }
@@ -50,7 +55,10 @@ func (s *stubSubscriptions) SetFeedCategories(_ string, _ []string) error { retu
 
 // stubItems ItemServiceの最小スタブです。ツリー描画の未読集計に使います。
 type stubItems struct {
-	items map[string][]domain.Item
+	items         map[string][]domain.Item
+	deletedFeedID string
+	deletedItemID string
+	deleteErr     error
 }
 
 func (s *stubItems) ListItems(feedID string) ([]domain.Item, error) {
@@ -82,17 +90,59 @@ func (s *stubItems) SetBookmarked(_, _ string, _ bool) error    { return nil }
 func (s *stubItems) SetNote(_, _, _ string) error               { return nil }
 func (s *stubItems) AddHighlight(_, _, _ string) error          { return nil }
 
+// DeleteItem 合成フィードから指定記事を取り除きます。呼び出しの記録も残します。
+func (s *stubItems) DeleteItem(feedID, itemID string) error {
+	if !domain.IsSavedPagesFeed(feedID) {
+		return service.ErrNotSavedPagesFeed
+	}
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
+	items := s.items[feedID]
+	kept := make([]domain.Item, 0, len(items))
+	found := false
+	for _, it := range items {
+		if it.ID == itemID {
+			found = true
+			s.deletedFeedID = feedID
+			s.deletedItemID = itemID
+			continue
+		}
+		kept = append(kept, it)
+	}
+	if !found {
+		return service.ErrItemNotFound
+	}
+	s.items[feedID] = kept
+	return nil
+}
+
 // stubBookmarks BookmarkServiceの最小スタブです。一覧と作成と所属操作を記録します。
 // IDはテスト簡素化のため名称をそのまま使います。
 type stubBookmarks struct {
-	list       []domain.Bookmark
-	created    string
-	toggled    string
-	lastFeedID string
-	lastItemID string
+	list        []domain.Bookmark
+	created     string
+	toggled     string
+	lastFeedID  string
+	lastItemID  string
+	addedURL    string
+	addedLabel  string
+	addedItem   domain.Item
+	addURLError error
+	listErr     error
 }
 
-func (s *stubBookmarks) List() ([]domain.Bookmark, error) { return s.list, nil }
+func (s *stubBookmarks) List() ([]domain.Bookmark, error) { return s.list, s.listErr }
+
+// AddURL 入力を記録し、仕込まれた結果を返します。
+func (s *stubBookmarks) AddURL(_ context.Context, rawURL, bookmarkID string) (domain.Item, error) {
+	s.addedURL = rawURL
+	s.addedLabel = bookmarkID
+	if s.addURLError != nil {
+		return domain.Item{}, s.addURLError
+	}
+	return s.addedItem, nil
+}
 func (s *stubBookmarks) Create(name string) (domain.Bookmark, error) {
 	for _, b := range s.list {
 		if b.Name == name {

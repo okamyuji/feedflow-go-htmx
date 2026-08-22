@@ -52,6 +52,10 @@ type pageData struct {
 	CurrentFeedTitle string              // 表示中フィードの名称です。一括既読ボタンのラベルに使います
 	CurrentLabel     string              // 右ペイン左上に出す、選択中の項目名です。すべて、既読、ブックマーク、あとで読む、フィード名のいずれかです
 	ManualPollURL    string              // 現在の表示条件を保ったまま手動取得するHTMX送信先です
+	ShowAddURL       bool                // ブックマークビューで任意URLの追加フォームを出すかどうかです
+	AddURLPostURL    string              // URL追加フォームの送信先です。現在の表示条件をクエリで引き継ぎます
+	AddURLError      string              // URL追加に失敗したときに入力欄の上へ出す文言です
+	BookmarkOptions  []bookmarkOption    // URL追加フォームのラベル選択肢です
 }
 
 // feedTreeNode 左ペインの購読ツリーの1ノードを表します。

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 	"github.com/okamyuji/feedflow-go-htmx/internal/port"
 )
 
@@ -100,6 +101,10 @@ func (s *OPMLService) Export() ([]byte, error) {
 	}
 	outlines := make([]opmlOutline, 0, len(feeds))
 	for _, f := range feeds {
+		// 合成フィードは取得元URLを持たないため、OPMLに出すと他のリーダーで壊れます。
+		if domain.IsSavedPagesFeed(f.ID) {
+			continue
+		}
 		outlines = append(outlines, opmlOutline{
 			Text:    f.Title,
 			Title:   f.Title,

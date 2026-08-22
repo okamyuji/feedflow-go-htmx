@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -225,5 +226,140 @@ func TestBookmarkDeleteRoute(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `id="tree-pane"`) {
 		t.Fatalf("削除後はツリーペインを再描画すべき: %q", rec.Body.String())
+	}
+}
+
+// TestItemBookmarkDeletesSavedPageOnUnset 合成フィードの記事を解除すると、
+// 保存状態の更新ではなく記事そのものが消え、一覧からもOOBで取り除かれます。
+func TestItemBookmarkDeletesSavedPageOnUnset(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		domain.SavedPagesFeedID: {{ID: "s1", FeedID: domain.SavedPagesFeedID, Title: "保存したページ1", Bookmarked: true}},
+	}}
+	h := newAppHandler(t, subs, items)
+	form := url.Values{"bookmarked": {"false"}, "surface": {"picker"}}
+	req := httptest.NewRequest(http.MethodPost, "/app/items/"+domain.SavedPagesFeedID+"/s1/bookmark", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("feedID", domain.SavedPagesFeedID)
+	req.SetPathValue("itemID", "s1")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemBookmark(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if items.deletedItemID != "s1" || items.deletedFeedID != domain.SavedPagesFeedID {
+		t.Fatalf("DeleteItemが呼ばれていません got feed=%q item=%q", items.deletedFeedID, items.deletedItemID)
+	}
+	if got := len(items.items[domain.SavedPagesFeedID]); got != 0 {
+		t.Fatalf("保存ページは削除されるべき 残件数=%d", got)
+	}
+	if !strings.Contains(rec.Body.String(), `hx-swap-oob="delete"`) {
+		t.Fatalf("保存ページの解除は一覧からカードを取り除くべき: %q", rec.Body.String())
+	}
+}
+
+// TestItemBookmarkDeletesSavedPageOutsideBookmarkView 合成フィードの記事は、
+// ブックマークビュー以外から解除してもカードを一覧から取り除きます。
+func TestItemBookmarkDeletesSavedPageOutsideBookmarkView(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		domain.SavedPagesFeedID: {{ID: "s1", FeedID: domain.SavedPagesFeedID, Bookmarked: true}},
+	}}
+	h := newAppHandler(t, subs, items)
+	form := url.Values{"bookmarked": {"false"}}
+	req := httptest.NewRequest(http.MethodPost, "/app/items/"+domain.SavedPagesFeedID+"/s1/bookmark", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Current-URL", "https://feedflow.example/app/items")
+	req.SetPathValue("feedID", domain.SavedPagesFeedID)
+	req.SetPathValue("itemID", "s1")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemBookmark(rec, req)
+
+	if !strings.Contains(rec.Body.String(), `hx-swap-oob="delete"`) {
+		t.Fatalf("ビューに関わらずカードを取り除くべき: %q", rec.Body.String())
+	}
+}
+
+// TestItemBookmarkKeepsSubscribedItemOnUnset 購読フィードの記事は解除しても消えません。
+func TestItemBookmarkKeepsSubscribedItemOnUnset(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "f1"}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		"f1": {{ID: "i1", FeedID: "f1", Title: "記事1", Bookmarked: true}},
+	}}
+	h := newAppHandler(t, subs, items)
+	form := url.Values{"bookmarked": {"false"}}
+	req := httptest.NewRequest(http.MethodPost, "/app/items/f1/i1/bookmark", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("feedID", "f1")
+	req.SetPathValue("itemID", "i1")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemBookmark(rec, req)
+
+	if items.deletedItemID != "" {
+		t.Fatalf("購読フィードの記事でDeleteItemを呼んではいけません got %q", items.deletedItemID)
+	}
+	if got := len(items.items["f1"]); got != 1 {
+		t.Fatalf("購読フィードの記事は残るべき 件数=%d", got)
+	}
+}
+
+// TestItemBookmarkTreatsMissingSavedPageAsSuccess 既に消えている保存ページへの解除は成功として扱います。
+// 別タブや再送で二重に届いた解除を、実害の無い競合として黙って受け流します。
+func TestItemBookmarkTreatsMissingSavedPageAsSuccess(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle}}}
+	// スタブは本実装と同じく、対象が無ければErrItemNotFoundを返します。
+	items := &stubItems{items: map[string][]domain.Item{domain.SavedPagesFeedID: {}}}
+	h := newAppHandler(t, subs, items)
+	form := url.Values{"bookmarked": {"false"}}
+	req := httptest.NewRequest(http.MethodPost, "/app/items/"+domain.SavedPagesFeedID+"/gone/bookmark", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("feedID", domain.SavedPagesFeedID)
+	req.SetPathValue("itemID", "gone")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemBookmark(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), `hx-swap-oob="delete"`) {
+		t.Fatalf("既に消えている記事でも一覧から取り除くべき: %q", rec.Body.String())
+	}
+}
+
+// TestItemBookmarkReportsDeleteFailure 削除に失敗した場合は内部エラーを返します。
+func TestItemBookmarkReportsDeleteFailure(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		domain.SavedPagesFeedID: {{ID: "s1", FeedID: domain.SavedPagesFeedID, Bookmarked: true}},
+	}}
+	items.deleteErr = errors.New("disk full")
+	h := newAppHandler(t, subs, items)
+	form := url.Values{"bookmarked": {"false"}}
+	req := httptest.NewRequest(http.MethodPost, "/app/items/"+domain.SavedPagesFeedID+"/s1/bookmark", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("feedID", domain.SavedPagesFeedID)
+	req.SetPathValue("itemID", "s1")
+	req = withSession(req, Session{Username: "owner", CSRFToken: "tok"})
+	rec := httptest.NewRecorder()
+
+	h.itemBookmark(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusInternalServerError)
 	}
 }

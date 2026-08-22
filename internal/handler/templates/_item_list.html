@@ -40,6 +40,7 @@
     {{ end }}
     </div>
   </div>
+  {{ if .ShowAddURL }}{{ template "_bookmark_add_url.html" . }}{{ end }}
   {{ if not .Items }}
   <p class="item-empty">表示できる記事はありません。新着が届くとここに並びます。</p>
   {{ end }}

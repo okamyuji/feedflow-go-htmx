@@ -124,3 +124,54 @@ func TestItemCardWithContentOpensOverlay(t *testing.T) {
 		t.Fatalf("本文のある記事はオーバーレイ取得のhx-getを出すべきです: %q", body)
 	}
 }
+
+func TestBuildTreeExcludesSavedPagesFeed(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{
+		{ID: domain.SavedPagesFeedID, Title: domain.SavedPagesFeedTitle},
+		{ID: "f1", Title: "通常フィード"},
+	}}
+	items := &stubItems{items: map[string][]domain.Item{
+		domain.SavedPagesFeedID: {{ID: "s1", FeedID: domain.SavedPagesFeedID, Bookmarked: true}},
+		"f1":                    {{ID: "i1", FeedID: "f1"}},
+	}}
+	h := newBookmarkTreeHandler(t, subs, items, nil)
+
+	nodes, err := h.buildTree()
+	if err != nil {
+		t.Fatalf("buildTree returned error: %v", err)
+	}
+	feedCount := 0
+	for _, n := range nodes {
+		if n.Kind != "feed" {
+			continue
+		}
+		feedCount++
+		if domain.IsSavedPagesFeed(n.ID) {
+			t.Fatalf("the saved pages feed appeared in the tree: %+v", n)
+		}
+	}
+	if feedCount != 1 {
+		t.Errorf("feed node count = %d, want 1", feedCount)
+	}
+}
+
+func TestBuildTreeKeepsSavedPageOutOfUnreadCount(t *testing.T) {
+	t.Parallel()
+	subs := &stubSubscriptions{feeds: []domain.Feed{{ID: "f1", Title: "通常フィード"}}}
+	items := &stubItems{items: map[string][]domain.Item{
+		domain.SavedPagesFeedID: {{ID: "s1", FeedID: domain.SavedPagesFeedID, Bookmarked: true}},
+		"f1":                    {{ID: "i1", FeedID: "f1"}},
+	}}
+	h := newBookmarkTreeHandler(t, subs, items, nil)
+
+	nodes, err := h.buildTree()
+	if err != nil {
+		t.Fatalf("buildTree returned error: %v", err)
+	}
+	for _, n := range nodes {
+		if n.Kind == "all" && n.UnreadCount != 1 {
+			t.Errorf("total unread = %d, want 1 (the saved page must not be counted)", n.UnreadCount)
+		}
+	}
+}

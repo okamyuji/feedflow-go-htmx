@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
+	"github.com/okamyuji/feedflow-go-htmx/internal/service"
 )
 
 // manualPollTimeout HTTPのWriteTimeoutより短く打ち切り、手動更新がゲートウェイタイムアウトを誘発しないようにします。
@@ -44,7 +46,15 @@ func (h *Handler) buildTree() ([]feedTreeNode, error) {
 		return nil, err
 	}
 
-	feedNodes := orderFeedNodes(feeds, unreadByFeed, h.feedSortSettings())
+	// 合成フィードは購読フィードではないため、左ペインには出しません。
+	subscribed := make([]domain.Feed, 0, len(feeds))
+	for _, f := range feeds {
+		if domain.IsSavedPagesFeed(f.ID) {
+			continue
+		}
+		subscribed = append(subscribed, f)
+	}
+	feedNodes := orderFeedNodes(subscribed, unreadByFeed, h.feedSortSettings())
 	nodes := make([]feedTreeNode, 0, 4+len(feedNodes))
 	nodes = append(nodes,
 		feedTreeNode{Kind: "all", Label: "すべて", UnreadCount: unreadTotal},
@@ -271,6 +281,10 @@ func (h *Handler) feedUnsubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.deps.Subscriptions.Unsubscribe(feedID); err != nil {
+		if errors.Is(err, service.ErrNotUnsubscribable) {
+			http.Error(w, "this feed cannot be unsubscribed", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "failed to unsubscribe", http.StatusInternalServerError)
 		return
 	}

@@ -164,3 +164,64 @@ func TestRouterItemActionRequiresCSRF(t *testing.T) {
 		t.Fatalf("status got %d want %d", rec.Code, http.StatusForbidden)
 	}
 }
+
+func TestRouterAddURLRequiresAuth(t *testing.T) {
+	t.Parallel()
+	h := newFullHandler(t, false)
+	srv := h.Routes()
+	req := httptest.NewRequest(http.MethodPost, "/app/bookmarks/add-url", strings.NewReader("url=https%3A%2F%2Fexample.com%2Fa"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("未認証のURL追加は拒否すべき status got %d", rec.Code)
+	}
+}
+
+func TestRouterAddURLRequiresCSRF(t *testing.T) {
+	t.Parallel()
+	h, err := New(Deps{
+		Subscriptions:     &stubSubscriptions{},
+		Items:             &stubItems{items: map[string][]domain.Item{}},
+		Bookmarks:         &stubBookmarks{},
+		Mutes:             &stubMutes{},
+		Settings:          &stubSettings{current: domain.DefaultSettings()},
+		OPML:              &stubOPML{},
+		Sessions:          &stubSessions{username: "owner", ok: true},
+		CSRF:              &stubCSRF{ok: false, token: "tok"},
+		LoginLimiter:      stubLimiter{allow: true},
+		Setup:             &stubSetup{},
+		SessionCookieName: "feedflow_session",
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	srv := h.Routes()
+	req := httptest.NewRequest(http.MethodPost, "/app/bookmarks/add-url", strings.NewReader("url=https%3A%2F%2Fexample.com%2Fa"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "feedflow_session", Value: "sess-1"})
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status got %d want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestRouterAddURLRejectsGET(t *testing.T) {
+	t.Parallel()
+	h := newFullHandler(t, true)
+	srv := h.Routes()
+	req := httptest.NewRequest(http.MethodGet, "/app/bookmarks/add-url", nil)
+	req.AddCookie(&http.Cookie{Name: "feedflow_session", Value: "sess-1"})
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("GETでのURL追加は受け付けてはいけません status got %d", rec.Code)
+	}
+}

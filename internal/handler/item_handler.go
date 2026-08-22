@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/domain"
 	"github.com/okamyuji/feedflow-go-htmx/internal/feed"
+	"github.com/okamyuji/feedflow-go-htmx/internal/service"
 )
 
 // readHeadLimit 単一フィード表示時に先頭へ既読として再表示する直近件数の上限です。
@@ -171,6 +173,13 @@ func isBookmarkViewURL(r *http.Request) bool {
 	return q.Get("view") == "bookmark" || q.Get("bookmark") != ""
 }
 
+// isBookmarkListRequest リクエスト自身のクエリがブックマーク記事の一覧を指すかどうかを返します。
+// isBookmarkViewURLはHX-Current-URLを見るのに対し、こちらは描画対象のクエリを直接見ます。
+func isBookmarkListRequest(r *http.Request) bool {
+	q := r.URL.Query()
+	return q.Get("view") == "bookmark" || q.Get("bookmark") != ""
+}
+
 // keepItems 述語を満たす記事だけを順序を保って残します。
 func keepItems(items []domain.Item, keep func(domain.Item) bool) []domain.Item {
 	out := make([]domain.Item, 0, len(items))
@@ -262,6 +271,9 @@ func (h *Handler) itemList(w http.ResponseWriter, r *http.Request) {
 		CurrentFeedTitle: feedTitle,
 		CurrentLabel:     h.currentSelectionLabel(r),
 		ManualPollURL:    manualPollURL(r),
+		ShowAddURL:       isBookmarkListRequest(r),
+		AddURLPostURL:    addURLPostURL(r),
+		BookmarkOptions:  h.bookmarkOptions(),
 	}
 	if isHTMX(r) {
 		h.renderWithTreeOOB(w, r, http.StatusOK, "_item_list.html", data)
@@ -416,6 +428,9 @@ func (h *Handler) itemMarkRead(w http.ResponseWriter, r *http.Request) {
 // 保存の付け外しはブックマークボタンのピッカー1か所で行うため、応答はピッカーの再描画に一本化します。
 // ブックマークビューで解除した場合は、ピッカー更新に加えて当該記事カードを一覧から取り除きます
 // (記事カード内の解除ボタンを廃し、ブックマークボタンの解除でその挙動を代用するため)。
+// 合成フィードの記事を解除した場合は記事そのものを削除します。
+// 保存状態を落として残すと、購読元の無い記事が未読ストリームに現れ未読合計もずれるためです。
+// この場合は表示中のビューに関わらず一覧から取り除きます。
 func (h *Handler) itemBookmark(w http.ResponseWriter, r *http.Request) {
 	feedID := r.PathValue("feedID")
 	itemID := r.PathValue("itemID")
@@ -424,6 +439,16 @@ func (h *Handler) itemBookmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bookmarked := r.FormValue("bookmarked") == "true"
+	if !bookmarked && domain.IsSavedPagesFeed(feedID) {
+		// 既に消えている記事への解除は成功として扱います。
+		// 別タブや再送で二重に届いた解除を、実害の無い競合として黙って受け流します。
+		if err := h.deps.Items.DeleteItem(feedID, itemID); err != nil && !errors.Is(err, service.ErrItemNotFound) {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		h.renderBookmarkPicker(w, r, feedID, itemID, true, true)
+		return
+	}
 	if err := h.deps.Items.SetBookmarked(feedID, itemID, bookmarked); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

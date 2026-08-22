@@ -11,6 +11,10 @@ import (
 // ErrItemNotFound 指定IDの記事が見つからないときに返すエラーです。
 var ErrItemNotFound = errors.New("item not found")
 
+// ErrNotSavedPagesFeed 合成フィード以外の記事に削除を要求されたときに返すエラーです。
+// 購読フィードの記事はポーリングで再取得され得るため、削除は合成フィードに限ります。
+var ErrNotSavedPagesFeed = errors.New("not a saved pages feed")
+
 // ItemService 記事の既読やあとで読むやタグやブックマークやメモの操作を担います。
 // port.ItemService を満たします。
 type ItemService struct {
@@ -257,4 +261,33 @@ func (s *ItemService) AddHighlight(feedID, itemID, highlight string) error {
 		item.Highlights = next
 		return item
 	})
+}
+
+// DeleteItem 合成フィードから指定記事を削除します。
+// 合成フィード以外のフィードIDを渡された場合はErrNotSavedPagesFeedを返し、何も変更しません。
+// 対象記事が見つからない場合はErrItemNotFoundを返します。
+func (s *ItemService) DeleteItem(feedID, itemID string) error {
+	if !domain.IsSavedPagesFeed(feedID) {
+		return ErrNotSavedPagesFeed
+	}
+	items, err := s.deps.Repo.Items(feedID)
+	if err != nil {
+		return fmt.Errorf("failed to load items for feed %s: %w", feedID, err)
+	}
+	kept := make([]domain.Item, 0, len(items))
+	found := false
+	for _, item := range items {
+		if item.ID == itemID {
+			found = true
+			continue
+		}
+		kept = append(kept, item)
+	}
+	if !found {
+		return ErrItemNotFound
+	}
+	if err := s.deps.Repo.SaveItems(feedID, kept); err != nil {
+		return fmt.Errorf("failed to save items for feed %s: %w", feedID, err)
+	}
+	return nil
 }

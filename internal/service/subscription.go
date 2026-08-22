@@ -20,6 +20,10 @@ var ErrDuplicateFeed = errors.New("feed url already subscribed")
 // ErrFeedNotDiscovered サイトURLからフィードを検出できなかったときに返すエラーです。
 var ErrFeedNotDiscovered = errors.New("no feed link discovered on site")
 
+// ErrNotUnsubscribable 購読解除できないフィードを指定されたときに返すエラーです。
+// 任意URLの保存に使う合成フィードが対象です。
+var ErrNotUnsubscribable = errors.New("feed cannot be unsubscribed")
+
 // errNotFoundCategory Reorderで未知のカテゴリIDを受け取ったときの基底エラーです。
 var errNotFoundCategory = errors.New("category not found")
 
@@ -122,7 +126,13 @@ func (s *SubscriptionService) feedURLExists(feedURL string) (bool, error) {
 }
 
 // Unsubscribe 指定フィードの購読を解除し、属する記事も削除します。
+// 合成フィードは購読フィードではないため拒否します。
+// 左ツリーに解除ボタンを出していなくてもルート自体は到達可能で、
+// 通してしまうと保存したページが記事ごと一括で失われるためです。
 func (s *SubscriptionService) Unsubscribe(feedID string) error {
+	if domain.IsSavedPagesFeed(feedID) {
+		return ErrNotUnsubscribable
+	}
 	if err := s.deps.Repo.DeleteFeed(feedID); err != nil {
 		return fmt.Errorf("failed to delete feed %s: %w", feedID, err)
 	}
