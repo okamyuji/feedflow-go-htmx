@@ -1128,26 +1128,31 @@ button:disabled {
   }
 }
 
-/* 任意URLの保存フォーム。ブックマーク系ビューの一覧バー直下に置きます。 */
+/* 任意URLの保存フォーム。ブックマーク系ビューの一覧バー直下に置きます。
+   入力欄とセレクトの見た目は他画面と揃えるため.field-inputに任せ、ここでは並びだけを決めます。 */
 .add-url-form {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
 }
 
+/* 入力欄(--text-base)とボタン(--text-sm)でフォントサイズが違い高さがずれるため、
+   stretchで行の高さに揃えます。 */
 .add-url-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  align-items: center;
+  align-items: stretch;
 }
 
+/* .field-inputはwidth:100%のため、横並びではflexの伸縮に任せます。 */
 .add-url-input {
   flex: 1 1 18rem;
+  width: auto;
   min-width: 0;
 }
 
 .add-url-select {
   flex: 0 0 auto;
+  width: auto;
 }
 
 .add-url-error {
@@ -1159,10 +1164,14 @@ button:disabled {
   font-size: var(--text-sm);
 }
 
-/* 狭い画面では入力欄とラベル選択を全幅にして折り返します。 */
+/* 狭い画面ではURL入力を全幅で1段目に置き、ラベル選択と追加ボタンを2段目に並べます。
+   3つとも全幅にすると3段になって一覧が押し下げられます。 */
 @media (max-width: 640px) {
-  .add-url-input,
-  .add-url-select {
+  .add-url-input {
     flex: 1 1 100%;
+  }
+
+  .add-url-select {
+    flex: 1 1 auto;
   }
 }

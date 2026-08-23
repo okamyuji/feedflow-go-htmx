@@ -10,7 +10,7 @@
   {{ if .AddURLError }}<p class="add-url-error" role="alert">{{ .AddURLError }}</p>{{ end }}
   <div class="add-url-row">
     <input
-      class="add-url-input"
+      class="add-url-input field-input"
       type="url"
       name="url"
       required
@@ -18,7 +18,7 @@
       aria-label="保存するURL"
     >
     {{ if .BookmarkOptions }}
-    <select class="add-url-select" name="bookmark_id" aria-label="追加先のラベル">
+    <select class="add-url-select field-input" name="bookmark_id" aria-label="追加先のラベル">
       <option value="">ラベルなし</option>
       {{ range .BookmarkOptions }}<option value="{{ .ID }}">{{ .Name }}</option>{{ end }}
     </select>
