@@ -18,9 +18,12 @@ deploy/terraform配下のtfstateとsecrets.auto.tfvarsとpemはいずれも.giti
 ローカル専用の成果物でgitに混入しない。terraform apply後にローカルへ生成される実値だが
 追跡対象外のため、作業ツリーのno-git scanからは除外する。secrets.auto.tfvars.exampleは
 マスク済みのテンプレートで追跡対象だがプレースホルダのみのため誤検出しない。
+graphify-outと.code-review-graphはコード解析ツールの生成物で、ソース中のテスト鍵を複製するため除外する。
 """
 paths = [
   '''\.env\.example''',
+  '''^graphify-out/''',
+  '''^\.code-review-graph/''',
   '''^\.env$''',
   '''^docs/superpowers/''',
   '''^scripts/verify-hardening\.sh$''',
