@@ -41,3 +41,7 @@ node_modules/
 # Playwright MCP のスクリーンショット出力
 .playwright-mcp/
 .code-review-graph/
+
+# Graphify の生成物
+.graphify/
+graphify-out/
