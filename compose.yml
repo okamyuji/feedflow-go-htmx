@@ -16,6 +16,9 @@ services:
       FEEDFLOW_DATA_DIR: "/data"
       FEEDFLOW_BASE_URL: "${FEEDFLOW_BASE_URL:?set FEEDFLOW_BASE_URL}"
       FEEDFLOW_SESSION_KEY: "${FEEDFLOW_SESSION_KEY:?set FEEDFLOW_SESSION_KEY}"
+      # 全データ常駐で生ヒープが大きく、既定GCでは余裕分がそのまま常駐メモリになるため上限で抑えます。
+      # 生ヒープに約4割の余裕を残した値です。生ヒープが近づくとGCがCPUを使い続けるため、データが増えたら見直します。
+      GOMEMLIMIT: "48MiB"
     volumes:
       # EBSをマウントしたホストの/mnt/feedflow-dataを永続化先にします。
       - /mnt/feedflow-data:/data
