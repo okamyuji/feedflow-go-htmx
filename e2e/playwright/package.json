@@ -10,6 +10,7 @@
     "report": "playwright show-report",
     "install:browsers": "playwright install --with-deps chromium"
   },
+  "packageManager": "pnpm@11.20.0",
   "devDependencies": {
     "@playwright/test": "1.60.0",
     "@types/node": "22.10.2",

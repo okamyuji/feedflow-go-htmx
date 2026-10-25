@@ -82,7 +82,7 @@ AWS の単一 EC2 と Cloudflare を terraform でまとめて管理します。
 
 ```bash
 make test                              # Goの単体と統合テスト
-cd e2e/playwright && npx playwright test   # PlaywrightのE2E
+cd e2e/playwright && pnpm exec playwright test   # PlaywrightのE2E
 ```
 
 ## 品質ゲート
