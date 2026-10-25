@@ -2,7 +2,7 @@
 # feedflowのマルチステージビルドです。embed同梱の単一バイナリをdistrolessのnonrootで動かします。
 
 # ---- build stage ----
-FROM golang:1.26.9-bookworm AS build
+FROM golang:1.26.10-bookworm AS build
 
 ARG VERSION=dev
 ARG TARGETOS=linux
