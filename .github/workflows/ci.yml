@@ -95,26 +95,30 @@ jobs:
       - name: Build feedflow binary
         run: go build -o e2e/playwright/.cache/feedflow-e2e ./cmd/feedflow
 
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: e2e/playwright/package.json
+
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
           node-version: "24"
-          cache: npm
-          cache-dependency-path: e2e/playwright/package-lock.json
+          cache: pnpm
+          cache-dependency-path: e2e/playwright/pnpm-lock.yaml
 
-      - name: Install npm dependencies
+      - name: Install dependencies
         working-directory: e2e/playwright
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
         working-directory: e2e/playwright
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Run Playwright tests
         working-directory: e2e/playwright
         env:
           CI: "true"
-        run: npm test
+        run: pnpm test
 
       - name: Upload Playwright report
         if: always()
