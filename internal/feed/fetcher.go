@@ -163,6 +163,10 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req port.FetchRequest) (port.Fe
 		result.NotModified = true
 		return result, nil
 	}
+	// 403や429のエラーページを解析へ回すと、本当の理由がXML解析エラーに隠れます。
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return port.FetchResult{}, fmt.Errorf("failed to fetch %q: HTTP %d", req.URL, resp.StatusCode)
+	}
 
 	body, err := f.readBody(resp)
 	if err != nil {

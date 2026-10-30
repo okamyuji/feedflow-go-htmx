@@ -43,7 +43,7 @@ func NewService(
 }
 
 // PollFeed 指定フィードを取得し新着記事を反映して新着件数を返します。
-// 取得に失敗した場合は連続エラー数を1増やして保存し、エラーを返します。
+// 取得に失敗した場合は連続エラー数を1増やし、最終取得時刻を進めて保存し、エラーを返します。
 // サーバが未更新を示した場合は記事を増やさず最終取得時刻だけ更新します。
 // 合成フィードは取得元URLを持たないため、何もせず0件を返します。
 func (s *Service) PollFeed(ctx context.Context, feedID string) (int, error) {
@@ -202,6 +202,7 @@ func (s *Service) applyParsed(feed domain.Feed, parsed port.ParsedFeed, res port
 	updated.LastModified = res.LastModified
 	updated.LastFetchedAt = now
 	updated.ConsecutiveErrors = 0
+	updated.LastError = ""
 	if err := s.repo.SaveFeed(updated); err != nil {
 		return 0, fmt.Errorf("failed to save feed %q: %w", feed.ID, err)
 	}
@@ -210,9 +211,12 @@ func (s *Service) applyParsed(feed domain.Feed, parsed port.ParsedFeed, res port
 }
 
 // recordFetchError 取得や解析の失敗を連続エラー数へ反映してエラーを返します。
+// 最終取得時刻も進め、壊れたフィードを毎tickではなく通常の間隔で再試行させます。
 func (s *Service) recordFetchError(feed domain.Feed, cause error) error {
 	updated := feed
 	updated.ConsecutiveErrors = feed.ConsecutiveErrors + 1
+	updated.LastError = cause.Error()
+	updated.LastFetchedAt = s.clock.Now()
 	if saveErr := s.repo.SaveFeed(updated); saveErr != nil {
 		return fmt.Errorf("failed to save feed after fetch error (%v): %w", cause, saveErr)
 	}
@@ -224,6 +228,7 @@ func (s *Service) recordNotModified(feed domain.Feed, now time.Time) error {
 	updated := feed
 	updated.LastFetchedAt = now
 	updated.ConsecutiveErrors = 0
+	updated.LastError = ""
 	if err := s.repo.SaveFeed(updated); err != nil {
 		return fmt.Errorf("failed to save feed %q after not-modified: %w", feed.ID, err)
 	}

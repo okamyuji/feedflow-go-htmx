@@ -145,6 +145,8 @@ type fakeRepo struct {
 	feeds    map[string]domain.Feed
 	items    map[string][]domain.Item
 	settings domain.Settings
+	// saveFeedErr 設定するとSaveFeedがこのエラーを返し、保存失敗の経路を試せます。
+	saveFeedErr error
 }
 
 func newFakeRepo() *fakeRepo {
@@ -178,6 +180,9 @@ func (r *fakeRepo) Feed(id string) (domain.Feed, error) {
 func (r *fakeRepo) SaveFeed(feed domain.Feed) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.saveFeedErr != nil {
+		return r.saveFeedErr
+	}
 	r.feeds[feed.ID] = feed
 	return nil
 }
