@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strconv"
@@ -53,14 +54,19 @@ func (f *fakeFetcher) Fetch(_ context.Context, req port.FetchRequest) (port.Fetc
 
 // fakeParser バイト列ごとに固定の結果を返すFeedParserのフェイクです。
 // parsed をそのまま返し、errが設定されていればエラーを返します。
+// rejectHTMLが真なら<html>を含む本文を解析失敗にし、サイトURLからの検出経路を試せるようにします。
 type fakeParser struct {
-	parsed port.ParsedFeed
-	err    error
+	parsed     port.ParsedFeed
+	err        error
+	rejectHTML bool
 }
 
-func (p fakeParser) Parse(_ []byte) (port.ParsedFeed, error) {
+func (p fakeParser) Parse(body []byte) (port.ParsedFeed, error) {
 	if p.err != nil {
 		return port.ParsedFeed{}, p.err
+	}
+	if p.rejectHTML && bytes.Contains(body, []byte("<html")) {
+		return port.ParsedFeed{}, errors.New("not a feed")
 	}
 	return p.parsed, nil
 }

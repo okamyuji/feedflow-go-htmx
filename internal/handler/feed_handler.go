@@ -113,14 +113,19 @@ func orderFeedNodes(feeds []domain.Feed, unreadByFeed map[string]int, settings d
 }
 
 // feedNode フィードから表示ノードを作ります。
+// エラー状態のフィードには、削除せずに取得元を直せるようURL変更フォームを付けます。
 func feedNode(f domain.Feed, unread int) feedTreeNode {
-	return feedTreeNode{
+	node := feedTreeNode{
 		Kind:        "feed",
 		ID:          f.ID,
 		Label:       f.Title,
 		UnreadCount: unread,
 		HasError:    f.HasError(),
 	}
+	if node.HasError {
+		node.URLForm = &feedURLForm{FeedID: f.ID, URL: f.FeedURL, SiteURL: f.SiteURL, Reason: f.LastError}
+	}
+	return node
 }
 
 // buildBookmarkNode ブックマークの親ノードと名称コレクションの子ノードを組み立てます。
@@ -271,6 +276,55 @@ func (h *Handler) feedPoll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.itemList(w, r)
+}
+
+// feedUpdateURL 取得エラーのフィードの取得元URLを差し替え、すぐに取得してそのフィードの記事一覧を返します。
+// 失敗時はHTTP 200のまま、左ペインのフォームだけを文言付きで差し替えます。
+// HTMXは4xxと5xxを差し替えないため、文言を見せるにはHX-Retargetで成功時と別の差し替え先を指定します。
+func (h *Handler) feedUpdateURL(w http.ResponseWriter, r *http.Request) {
+	feedID := r.PathValue("feedID")
+	if feedID == "" {
+		http.Error(w, "feedID is required", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	rawURL := r.FormValue("url")
+	if _, err := h.deps.Subscriptions.UpdateFeedURL(r.Context(), feedID, rawURL); err != nil {
+		slog.Warn("failed to update feed url", "feed_id", feedID, "error", err)
+		w.Header().Set("HX-Retarget", "#feed-url-form-"+feedID)
+		w.Header().Set("HX-Reswap", "outerHTML")
+		w.Header().Set("HX-Push-Url", "false")
+		h.renderPartial(w, http.StatusOK, "_feed_url_form.html", feedURLForm{
+			FeedID: feedID,
+			URL:    rawURL,
+			Error:  feedURLErrorMessage(err),
+		})
+		return
+	}
+	pollCtx, cancel := context.WithTimeout(r.Context(), manualPollTimeout)
+	defer cancel()
+	// 失敗してもPollFeedがフィードのLastErrorへ記録し、ツリーに理由が出るため、ここでは扱いません。
+	_, _ = h.deps.Poll.PollFeed(pollCtx, feedID)
+	h.itemList(w, r)
+}
+
+// feedURLErrorMessage URL変更の失敗理由を利用者向けの文言に変換します。
+func feedURLErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, service.ErrInvalidURL):
+		return "URLの形式が正しくありません。httpまたはhttpsで始まるURLを入力してください。"
+	case errors.Is(err, service.ErrFeedNotDiscovered):
+		return "このページからフィードが見つかりませんでした。フィードのURLかサイトのトップページのURLを入力してください。"
+	case errors.Is(err, service.ErrDuplicateFeed):
+		return "このフィードはすでに購読しています。重複している方を購読解除してください。"
+	case errors.Is(err, service.ErrFeedNotEditable):
+		return "このフィードはURLを変更できません。"
+	default:
+		return "このURLからフィードを取得できませんでした。URLを確認してもう一度お試しください。"
+	}
 }
 
 // feedUnsubscribe 指定フィードの購読を解除し、属する記事も削除したうえでツリーペイン全体を部分更新で返します。
