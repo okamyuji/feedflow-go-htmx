@@ -1,0 +1,28 @@
+{{ define "_feed_url_form.html" }}
+{{/* 取得エラーのフィードの取得元を差し替えるフォームです。成功時は記事一覧を、失敗時はこのフォームだけを返します。
+     失敗時の差し替え先はサーバがHX-Retargetで指定するため、id属性を変えないでください。 */}}
+<form
+  id="feed-url-form-{{ .FeedID }}"
+  class="tree-feed-url-form"
+  hx-post="/app/feeds/{{ .FeedID }}/url?feed={{ .FeedID }}"
+  hx-target="#main-pane"
+  hx-swap="innerHTML"
+  hx-push-url="/app/items?feed={{ .FeedID }}"
+  hx-disabled-elt="find button"
+>
+  {{ if .Reason }}<p class="tree-feed-url-reason">取得エラー: {{ .Reason }}</p>{{ end }}
+  {{ if .Error }}<p class="add-url-error" role="alert">{{ .Error }}</p>{{ end }}
+  <label class="tree-feed-url-label" for="feed-url-input-{{ .FeedID }}">新しいフィードURLまたはサイトURL</label>
+  <input
+    id="feed-url-input-{{ .FeedID }}"
+    class="field-input"
+    type="url"
+    name="url"
+    value="{{ .URL }}"
+    autocomplete="off"
+    required
+  >
+  {{ if .SiteURL }}<p class="tree-feed-url-hint">サイトのURL({{ .SiteURL }})を入れると、フィードを自動で探します。</p>{{ end }}
+  <button class="btn-ghost" type="submit">URLを変更</button>
+</form>
+{{ end }}

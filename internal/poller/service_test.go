@@ -3,6 +3,7 @@ package poller
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ func TestServicePollFeedNewItems(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
 	repo := newFakeRepo()
-	_ = repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed", Title: "old"})
+	_ = repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed", Title: "old", ConsecutiveErrors: 6, LastError: "HTTP 403"})
 	_ = repo.SaveItems("f1", []domain.Item{
 		{ID: "x1", FeedID: "f1", GUID: "g-existing", Title: "既存", FetchedAt: now.Add(-time.Hour)},
 	})
@@ -70,8 +71,8 @@ func TestServicePollFeedNewItems(t *testing.T) {
 	if !feed.LastFetchedAt.Equal(now) {
 		t.Fatalf("feed LastFetchedAt got %v want %v", feed.LastFetchedAt, now)
 	}
-	if feed.ConsecutiveErrors != 0 {
-		t.Fatalf("feed ConsecutiveErrors got %d want 0", feed.ConsecutiveErrors)
+	if feed.ConsecutiveErrors != 0 || feed.LastError != "" {
+		t.Fatalf("feed got errors=%d LastError=%q want both cleared", feed.ConsecutiveErrors, feed.LastError)
 	}
 }
 
@@ -79,7 +80,7 @@ func TestServicePollFeedNotModified(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
 	repo := newFakeRepo()
-	_ = repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed", ETag: "etag-old"})
+	_ = repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed", ETag: "etag-old", ConsecutiveErrors: 6, LastError: "HTTP 403"})
 	_ = repo.SaveItems("f1", []domain.Item{{ID: "x1", FeedID: "f1", GUID: "g0", Title: "既存"}})
 
 	fetcher := newFakeFetcher()
@@ -103,8 +104,8 @@ func TestServicePollFeedNotModified(t *testing.T) {
 	if !feed.LastFetchedAt.Equal(now) {
 		t.Fatalf("feed LastFetchedAt got %v want %v", feed.LastFetchedAt, now)
 	}
-	if feed.ConsecutiveErrors != 0 {
-		t.Fatalf("feed ConsecutiveErrors got %d want 0", feed.ConsecutiveErrors)
+	if feed.ConsecutiveErrors != 0 || feed.LastError != "" {
+		t.Fatalf("feed got errors=%d LastError=%q want both cleared", feed.ConsecutiveErrors, feed.LastError)
 	}
 }
 
@@ -155,6 +156,50 @@ func TestServicePollFeedError(t *testing.T) {
 	feed, _ := repo.Feed("f1")
 	if feed.ConsecutiveErrors != 3 {
 		t.Fatalf("feed ConsecutiveErrors got %d want 3", feed.ConsecutiveErrors)
+	}
+	if !strings.Contains(feed.LastError, "network down") {
+		t.Fatalf("feed LastError got %q want it to contain the cause", feed.LastError)
+	}
+	// 失敗時も最終取得時刻を進めないと、期限切れのまま毎tick取り直して相手サーバを叩き続けます。
+	if !feed.LastFetchedAt.Equal(now) {
+		t.Fatalf("feed LastFetchedAt got %v want %v so the next retry waits for the interval", feed.LastFetchedAt, now)
+	}
+	if dueForPollWithJitter(feed, domain.DefaultSettings(), now.Add(time.Minute), func(time.Duration) time.Duration { return 0 }) {
+		t.Fatalf("a failed feed must not be due again one minute later")
+	}
+}
+
+func TestServicePollFeedReportsSaveFailureAfterFetchError(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	_ = repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed"})
+	saveErr := errors.New("disk full")
+	repo.saveFeedErr = saveErr
+	fetcher := newFakeFetcher()
+	fetcher.errs["https://example.com/feed"] = errors.New("network down")
+	svc := NewService(repo, fetcher, fakeParser{}, newFakeClock(time.Now()), &fakeIDGen{}, passthroughMute{})
+
+	_, err := svc.PollFeed(context.Background(), "f1")
+	if !errors.Is(err, saveErr) || !strings.Contains(err.Error(), "network down") {
+		t.Fatalf("error got %v want the save failure with the fetch cause", err)
+	}
+}
+
+func TestServicePollFeedParseErrorRecordsLastError(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
+	repo := newFakeRepo()
+	_ = repo.SaveFeed(domain.Feed{ID: "f1", FeedURL: "https://example.com/feed"})
+	fetcher := newFakeFetcher()
+	fetcher.results["https://example.com/feed"] = port.FetchResult{StatusCode: 200, Body: []byte("<html>")}
+	svc := NewService(repo, fetcher, fakeParser{err: errors.New("not a feed")}, newFakeClock(now), &fakeIDGen{}, passthroughMute{})
+
+	if _, err := svc.PollFeed(context.Background(), "f1"); err == nil {
+		t.Fatalf("PollFeed must return error on parse failure")
+	}
+	feed, _ := repo.Feed("f1")
+	if feed.ConsecutiveErrors != 1 || !strings.Contains(feed.LastError, "not a feed") {
+		t.Fatalf("feed got errors=%d LastError=%q want 1 and the parse cause", feed.ConsecutiveErrors, feed.LastError)
 	}
 }
 

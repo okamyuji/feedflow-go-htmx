@@ -10,17 +10,18 @@ const ErrorThreshold = 5
 
 // Feed フィードの購読単位を表します。設計書のセクション6に対応します。
 type Feed struct {
-	ID                string       `json:"id"`                 // 一意な識別子です
-	FeedURL           string       `json:"feed_url"`           // フィード本体のURLです
-	SiteURL           string       `json:"site_url"`           // サイトのトップURLです
-	Title             string       `json:"title"`              // フィードのタイトルです
-	CategoryIDs       []string     `json:"category_ids"`       // 所属するカテゴリのID群です
-	PollInterval      PollInterval `json:"poll_interval"`      // ポーリング間隔の上書き値です
-	ETag              string       `json:"etag"`               // 前回取得時のETagです
-	LastModified      string       `json:"last_modified"`      // 前回取得時のLast-Modifiedです
-	LastFetchedAt     time.Time    `json:"last_fetched_at"`    // 最終取得時刻です
-	ConsecutiveErrors int          `json:"consecutive_errors"` // 連続して失敗した回数です
-	Favorite          bool         `json:"favorite"`           // お気に入りフラグです
+	ID                string       `json:"id"`                   // 一意な識別子です
+	FeedURL           string       `json:"feed_url"`             // フィード本体のURLです
+	SiteURL           string       `json:"site_url"`             // サイトのトップURLです
+	Title             string       `json:"title"`                // フィードのタイトルです
+	CategoryIDs       []string     `json:"category_ids"`         // 所属するカテゴリのID群です
+	PollInterval      PollInterval `json:"poll_interval"`        // ポーリング間隔の上書き値です
+	ETag              string       `json:"etag"`                 // 前回取得時のETagです
+	LastModified      string       `json:"last_modified"`        // 前回取得時のLast-Modifiedです
+	LastFetchedAt     time.Time    `json:"last_fetched_at"`      // 最終取得時刻です
+	ConsecutiveErrors int          `json:"consecutive_errors"`   // 連続して失敗した回数です
+	LastError         string       `json:"last_error,omitempty"` // 直近の取得失敗の理由です。成功すると空に戻ります
+	Favorite          bool         `json:"favorite"`             // お気に入りフラグです
 }
 
 // HasError 連続エラー数がしきい値以上でエラー状態かどうかを返します。

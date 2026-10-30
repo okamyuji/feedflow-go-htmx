@@ -24,6 +24,10 @@ var ErrFeedNotDiscovered = errors.New("no feed link discovered on site")
 // 任意URLの保存に使う合成フィードが対象です。
 var ErrNotUnsubscribable = errors.New("feed cannot be unsubscribed")
 
+// ErrFeedNotEditable 取得元URLを変更できないフィードを指定されたときに返すエラーです。
+// 合成フィードは取得元URLを持たないため対象外です。
+var ErrFeedNotEditable = errors.New("feed url cannot be edited")
+
 // errNotFoundCategory Reorderで未知のカテゴリIDを受け取ったときの基底エラーです。
 var errNotFoundCategory = errors.New("category not found")
 
@@ -137,6 +141,81 @@ func (s *SubscriptionService) Unsubscribe(feedID string) error {
 		return fmt.Errorf("failed to delete feed %s: %w", feedID, err)
 	}
 	return nil
+}
+
+// UpdateFeedURL 指定フィードの取得元URLを差し替え、更新後のフィードを返します。
+// rawURLはフィードURLでもサイトURLでもよく、フィードとして解析できなければHTMLからフィードを検出します。
+// 取得と解析に成功したときだけ保存し、IDと記事とカテゴリを保ったままエラー状態を解除します。
+// 削除して購読し直すと既読やブックマークが失われるため、URLだけを入れ替えます。
+// 検証で取得した記事は取り込まず、ETagとLast-Modifiedを空にして次の取得で全件を取り込ませます。
+func (s *SubscriptionService) UpdateFeedURL(ctx context.Context, feedID, rawURL string) (domain.Feed, error) {
+	if domain.IsSavedPagesFeed(feedID) {
+		return domain.Feed{}, ErrFeedNotEditable
+	}
+	// 末尾スラッシュの有無で別のページを返すサーバがあるため、ブックマーク用の正規化はせず入力どおりに取得します。
+	u, err := parseHTTPURL(rawURL)
+	if err != nil {
+		return domain.Feed{}, err
+	}
+	feed, err := s.deps.Repo.Feed(feedID)
+	if err != nil {
+		return domain.Feed{}, fmt.Errorf("failed to load feed %s: %w", feedID, err)
+	}
+	feedURL, parsed, err := s.fetchFeedOrDiscover(ctx, u.String())
+	if err != nil {
+		return domain.Feed{}, err
+	}
+	feeds, err := s.deps.Repo.Feeds()
+	if err != nil {
+		return domain.Feed{}, fmt.Errorf("failed to load feeds: %w", err)
+	}
+	for _, f := range feeds {
+		if f.ID != feedID && f.FeedURL == feedURL {
+			return domain.Feed{}, ErrDuplicateFeed
+		}
+	}
+
+	updated := feed
+	updated.FeedURL = feedURL
+	if parsed.Title != "" {
+		updated.Title = parsed.Title
+	}
+	if parsed.SiteURL != "" {
+		updated.SiteURL = parsed.SiteURL
+	}
+	updated.ETag = ""
+	updated.LastModified = ""
+	updated.LastFetchedAt = s.deps.Clock.Now()
+	updated.ConsecutiveErrors = 0
+	updated.LastError = ""
+	if err := s.deps.Repo.SaveFeed(updated); err != nil {
+		return domain.Feed{}, fmt.Errorf("failed to save feed %s: %w", feedID, err)
+	}
+	return updated, nil
+}
+
+// fetchFeedOrDiscover URLをフィードとして取得し、解析できなければHTMLから検出したフィードURLで取り直します。
+func (s *SubscriptionService) fetchFeedOrDiscover(ctx context.Context, rawURL string) (string, port.ParsedFeed, error) {
+	res, err := s.deps.Fetch.Fetch(ctx, port.FetchRequest{URL: rawURL})
+	if err != nil {
+		return "", port.ParsedFeed{}, fmt.Errorf("failed to fetch %s: %w", rawURL, err)
+	}
+	if parsed, parseErr := s.deps.Parse.Parse(res.Body); parseErr == nil {
+		return rawURL, parsed, nil
+	}
+	feedURL, err := discoverFeedURL(rawURL, res.Body)
+	if err != nil {
+		return "", port.ParsedFeed{}, err
+	}
+	res, err = s.deps.Fetch.Fetch(ctx, port.FetchRequest{URL: feedURL})
+	if err != nil {
+		return "", port.ParsedFeed{}, fmt.Errorf("failed to fetch feed %s: %w", feedURL, err)
+	}
+	parsed, err := s.deps.Parse.Parse(res.Body)
+	if err != nil {
+		return "", port.ParsedFeed{}, fmt.Errorf("failed to parse feed %s: %w", feedURL, err)
+	}
+	return feedURL, parsed, nil
 }
 
 // SubscribeFromSite サイトURLを取得しHTMLからフィードリンクを検出して購読に追加します。

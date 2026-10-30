@@ -315,6 +315,59 @@ body {
   font-weight: 700;
 }
 
+/* エラー状態のフィードは、URL変更フォームを行の下へ折り返して出します。 */
+.tree-item.tree-error {
+  flex-wrap: wrap;
+}
+
+/* 直す必要があることを示すため、ホバーを待たずに常に表示します。 */
+.tree-fix-url {
+  flex: 0 0 auto;
+  height: 1.75rem;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tree-fix-url:hover,
+.tree-fix-url:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.tree-feed-url-panel {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.tree-feed-url-form {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+
+.tree-feed-url-reason,
+.tree-feed-url-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.tree-feed-url-label {
+  font-size: var(--text-sm);
+}
+
+.tree-feed-url-form .add-url-error {
+  margin: 0;
+}
+
 .feed-filter {
   position: relative;
   margin: 0 0 var(--space-3);

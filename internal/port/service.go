@@ -20,6 +20,8 @@ type SubscriptionService interface {
 	Reorder(categoryIDs []string) error
 	// SetFeedCategories 指定フィードの所属カテゴリを更新します。
 	SetFeedCategories(feedID string, categoryIDs []string) error
+	// UpdateFeedURL 指定フィードの取得元URLをフィードURLまたはサイトURLから差し替え、エラー状態を解除します。
+	UpdateFeedURL(ctx context.Context, feedID, rawURL string) (domain.Feed, error)
 }
 
 // ItemService 記事の既読やあとで読むやタグやブックマークやメモの操作を担う抽象です。

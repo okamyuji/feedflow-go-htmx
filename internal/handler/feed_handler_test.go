@@ -20,6 +20,24 @@ type stubSubscriptions struct {
 	subscribeErr   error
 	unsubscribeErr error
 	unsubscribeID  string
+	updatedID      string
+	updatedURL     string
+	updateErr      error
+}
+
+// UpdateFeedURL 入力を記録し、仕込まれたエラーがなければ対象フィードのエラー状態を解除します。
+func (s *stubSubscriptions) UpdateFeedURL(_ context.Context, feedID, rawURL string) (domain.Feed, error) {
+	s.updatedID, s.updatedURL = feedID, rawURL
+	if s.updateErr != nil {
+		return domain.Feed{}, s.updateErr
+	}
+	for i, f := range s.feeds {
+		if f.ID == feedID {
+			s.feeds[i].FeedURL, s.feeds[i].ConsecutiveErrors, s.feeds[i].LastError = rawURL, 0, ""
+			return s.feeds[i], nil
+		}
+	}
+	return domain.Feed{}, errors.New("feed not found")
 }
 
 func (s *stubSubscriptions) Subscribe(_ context.Context, feedURL string, _ []string) (domain.Feed, error) {

@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/okamyuji/feedflow-go-htmx/internal/port"
@@ -147,11 +150,39 @@ func TestFetchServerError(t *testing.T) {
 	defer srv.Close()
 
 	f := newTestFetcher()
-	res, err := f.Fetch(context.Background(), port.FetchRequest{URL: srv.URL})
-	if err != nil {
-		t.Fatalf("Fetch returned error: %v", err)
+	_, err := f.Fetch(context.Background(), port.FetchRequest{URL: srv.URL})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 500") {
+		t.Fatalf("Fetch error got %v want one containing HTTP 500", err)
 	}
-	if res.StatusCode != http.StatusInternalServerError {
-		t.Fatalf("StatusCode got %d want 500", res.StatusCode)
+}
+
+func TestFetchStatusBoundaries(t *testing.T) {
+	tests := []struct {
+		status  int
+		wantErr bool
+	}{
+		{http.StatusOK, false},
+		{http.StatusNoContent, false},
+		{299, false},
+		{http.StatusMultipleChoices, true},
+		{http.StatusForbidden, true},
+		{http.StatusTooManyRequests, true},
+		{http.StatusNotFound, true},
+	}
+	for _, tt := range tests {
+		t.Run(strconv.Itoa(tt.status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+			}))
+			defer srv.Close()
+
+			_, err := newTestFetcher().Fetch(context.Background(), port.FetchRequest{URL: srv.URL})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("status %d: err got %v wantErr %v", tt.status, err, tt.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), fmt.Sprintf("HTTP %d", tt.status)) {
+				t.Fatalf("status %d: error %q must name the status", tt.status, err)
+			}
+		})
 	}
 }

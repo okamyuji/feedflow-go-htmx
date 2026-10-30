@@ -90,7 +90,7 @@
   {{ end }}
 </li>
 {{ else }}
-<li class="tree-item tree-{{ .Kind }}{{ if .HasError }} tree-error{{ end }}{{ if .Active }} tree-active{{ end }}"{{ if eq .Kind "feed" }} data-label="{{ .Label }}"{{ end }}>
+<li class="tree-item tree-{{ .Kind }}{{ if .HasError }} tree-error{{ end }}{{ if .Active }} tree-active{{ end }}"{{ if eq .Kind "feed" }} data-label="{{ .Label }}"{{ end }}{{ if .URLForm }} x-data="{ fixing: false }"{{ end }}>
   <a
     class="tree-link"
     {{ if .Active }}aria-current="page"{{ end }}
@@ -103,6 +103,15 @@
     {{ if gt .UnreadCount 0 }}<span class="tree-badge">{{ .UnreadCount }}</span>{{ end }}
     {{ if .HasError }}<span class="tree-error-mark" title="取得エラー">!</span>{{ end }}
   </a>
+  {{ if .URLForm }}
+  <button
+    class="tree-fix-url"
+    type="button"
+    aria-controls="feed-url-panel-{{ .ID }}"
+    :aria-expanded="fixing"
+    @click="fixing = !fixing"
+  >URL修正</button>
+  {{ end }}
   {{ if eq .Kind "feed" }}
   <button
     class="tree-refresh"
@@ -125,6 +134,11 @@
     hx-swap="outerHTML"
     hx-confirm="このフィードの購読を解除しますか"
   >×</button>
+  {{ end }}
+  {{ with .URLForm }}
+  <div id="feed-url-panel-{{ .FeedID }}" class="tree-feed-url-panel" x-show="fixing" style="display:none">
+    {{ template "_feed_url_form.html" . }}
+  </div>
   {{ end }}
 </li>
 {{ if .UnreadGroupEnd }}<li class="tree-feed-divider" aria-hidden="true"></li>{{ end }}

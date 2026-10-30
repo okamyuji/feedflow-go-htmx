@@ -68,6 +68,16 @@ type feedTreeNode struct {
 	Active         bool           // 現在選択中のノードかどうかです。選択中は左ペインで強調表示します
 	Children       []feedTreeNode // 展開時に表示する子ノードです。ブックマークノードの名称コレクションに使います
 	UnreadGroupEnd bool           // 未読フィード群の末尾かどうかです。次の通常フィード群との区切り線描画に使います
+	URLForm        *feedURLForm   // エラー状態のフィードで取得元URLを変更するフォームです。正常なフィードではnilです
+}
+
+// feedURLForm 左ペインで取得エラーのフィードの取得元URLを変更するフォームの表示モデルです。
+type feedURLForm struct {
+	FeedID  string // 対象フィードのIDです
+	URL     string // 入力欄の値です。初期表示は現在のフィードURL、失敗時は利用者の入力です
+	SiteURL string // 入力の候補として示すサイトURLです
+	Reason  string // 直近の取得失敗の理由です
+	Error   string // URL変更に失敗したときに入力欄の上へ出す文言です
 }
 
 // itemView 右ペインとオーバーレイで描画する記事の表示モデルです。

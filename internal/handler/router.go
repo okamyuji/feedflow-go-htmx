@@ -113,6 +113,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.Handle("POST /app/feeds", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedSubscribe))))
 	mux.Handle("POST /app/feeds/poll", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedPoll))))
 	mux.Handle("POST /app/feeds/{feedID}/poll", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedPoll))))
+	mux.Handle("POST /app/feeds/{feedID}/url", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedUpdateURL))))
 	mux.Handle("DELETE /app/feeds/{feedID}", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.feedUnsubscribe))))
 	mux.Handle("POST /app/items/markall", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemMarkAll))))
 	mux.Handle("POST /app/items/{feedID}/{itemID}/read", h.requireAuth(h.requireCSRF(http.HandlerFunc(h.itemMarkRead))))

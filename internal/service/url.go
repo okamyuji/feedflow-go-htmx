@@ -15,22 +15,10 @@ var ErrInvalidURL = errors.New("invalid url")
 // クエリは記事の同一性に関わるため保持します。
 // httpとhttps以外のスキームとホスト無しのURLはErrInvalidURLを返します。
 func normalizeURL(rawURL string) (string, error) {
-	rawURL = strings.TrimSpace(rawURL)
-	if rawURL == "" {
-		return "", ErrInvalidURL
-	}
-	u, err := url.Parse(rawURL)
+	u, err := parseHTTPURL(rawURL)
 	if err != nil {
-		return "", errors.Join(ErrInvalidURL, err)
+		return "", err
 	}
-	scheme := strings.ToLower(u.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return "", ErrInvalidURL
-	}
-	if u.Host == "" {
-		return "", ErrInvalidURL
-	}
-	u.Scheme = scheme
 	u.Host = strings.ToLower(u.Host)
 	u.Fragment = ""
 	u.RawFragment = ""
@@ -41,6 +29,28 @@ func normalizeURL(rawURL string) (string, error) {
 		return "", err
 	}
 	return u.String(), nil
+}
+
+// parseHTTPURL 前後の空白を除いた入力を解析し、httpとhttpsでホストを持つURLだけを返します。
+// それ以外はErrInvalidURLを返します。スキームは小文字にそろえます。
+func parseHTTPURL(rawURL string) (*url.URL, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, ErrInvalidURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, errors.Join(ErrInvalidURL, err)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return nil, ErrInvalidURL
+	}
+	if u.Host == "" {
+		return nil, ErrInvalidURL
+	}
+	u.Scheme = scheme
+	return u, nil
 }
 
 // trimTrailingSlash ルート以外のパスの末尾スラッシュを取り除きます。
