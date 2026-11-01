@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
+    "typecheck": "tsc --noEmit",
     "test:headed": "playwright test --headed",
     "report": "playwright show-report",
     "install:browsers": "playwright install --with-deps chromium"
