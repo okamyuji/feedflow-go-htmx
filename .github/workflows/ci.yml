@@ -110,6 +110,10 @@ jobs:
         working-directory: e2e/playwright
         run: pnpm install --frozen-lockfile
 
+      - name: Typecheck
+        working-directory: e2e/playwright
+        run: pnpm run typecheck
+
       - name: Install Playwright browsers
         working-directory: e2e/playwright
         run: pnpm exec playwright install --with-deps chromium
